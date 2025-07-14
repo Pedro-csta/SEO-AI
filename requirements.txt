@@ -1,4 +1,7 @@
+# requirements.txt
 streamlit
 requests
 beautifulsoup4
 google-generativeai
+advertools
+extruct
