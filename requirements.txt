@@ -3,8 +3,7 @@ requests>=2.31.0
 beautifulsoup4>=4.12.0
 google-generativeai>=0.3.0
 pandas>=2.0.0
-plotly>=5.17.0
-validators>=0.22.0ulate
-plotly
-validators
-urllib3
+plotly>=5.15.0
+validators>=0.22.0
+textstat>=0.7.3
+nltk>=3.8.1
