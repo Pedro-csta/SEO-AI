@@ -160,14 +160,22 @@ def analyze_structured_data(soup):
     
     return structured_data
 
-# ========== TÓPICO 6: DASHBOARD COM GAUGES VISUAIS ==========
+# ========== TÓPICO 6: DASHBOARD COM GAUGES VISUAIS (CORRIGIDO) ==========
 def create_seo_score_gauge(score, title="SEO Score"):
     """Cria um gauge visual para scores de SEO"""
+    # Garantir que score é numérico
+    if score is None or score == "N/A":
+        score = 0
+    try:
+        score = float(score)
+    except (ValueError, TypeError):
+        score = 0
+    
     # Determina cor baseada no score
     if score >= 80:
         color = "green"
     elif score >= 60:
-        color = "yellow"
+        color = "orange"
     else:
         color = "red"
     
@@ -175,7 +183,7 @@ def create_seo_score_gauge(score, title="SEO Score"):
         mode = "gauge+number+delta",
         value = score,
         domain = {'x': [0, 1], 'y': [0, 1]},
-        title = {'text': title, 'font': {'size': 16}},
+        title = {'text': title, 'font': {'size': 14}},
         delta = {'reference': 80, 'suffix': " pts"},
         gauge = {
             'axis': {'range': [None, 100], 'tickwidth': 1, 'tickcolor': "darkblue"},
@@ -197,58 +205,275 @@ def create_seo_score_gauge(score, title="SEO Score"):
         }
     ))
     
-    fig.update_layout(height=250, margin=dict(l=20, r=20, t=40, b=20))
+    fig.update_layout(height=200, margin=dict(l=10, r=10, t=30, b=10))
     return fig
 
 def calculate_overall_seo_score(onpage_data, psi_data, keyword_data, structured_data):
-    """Calcula um score geral de SEO baseado em múltiplos fatores"""
+    """Calcula um score geral de SEO baseado em múltiplos fatores - VERSÃO CORRIGIDA"""
+    if not onpage_data:
+        return 0
+    
     score = 0
-    max_score = 100
     
-    # Performance (30 pontos)
-    if psi_data and 'mobile' in psi_data:
+    # CRITÉRIOS BÁSICOS (40 pontos) - Sempre disponíveis
+    # Title (15 pontos)
+    title_len = onpage_data.get('title_length', 0)
+    if title_len == 0 or onpage_data.get('title') == 'N/A':
+        score += 0  # Sem title
+    elif 30 <= title_len <= 60:
+        score += 15  # Title ideal
+    elif 20 <= title_len <= 80:
+        score += 10  # Title OK
+    else:
+        score += 5   # Title existe mas não ideal
+    
+    # H1 (10 pontos)
+    h1_count = onpage_data.get('h1_count', 0)
+    if h1_count == 1:
+        score += 10  # H1 perfeito
+    elif h1_count > 1:
+        score += 5   # Tem H1 mas múltiplos
+    # Se 0, não soma nada
+    
+    # Conteúdo (15 pontos)
+    word_count = onpage_data.get('word_count', 0)
+    if word_count >= 500:
+        score += 15
+    elif word_count >= 300:
+        score += 12
+    elif word_count >= 150:
+        score += 8
+    elif word_count > 0:
+        score += 3
+    
+    # PERFORMANCE (25 pontos) - Se disponível
+    if psi_data and 'mobile' in psi_data and psi_data['mobile']:
         mobile_perf = psi_data['mobile'].get('psi_performance', 0)
-        score += (mobile_perf / 100) * 30
+        try:
+            mobile_perf = float(mobile_perf)
+            score += (mobile_perf / 100) * 25
+        except (ValueError, TypeError):
+            pass
+    else:
+        # Se não tiver dados de performance, distribuir pontos nos outros critérios
+        score += 10  # Pontos base
     
-    # Conteúdo On-Page (25 pontos)
-    if onpage_data:
-        # Title adequado (5 pontos)
-        title_len = onpage_data.get('title_length', 0)
-        if 30 <= title_len <= 60:
-            score += 5
-        elif title_len > 0:
-            score += 2
-        
-        # H1 presente (5 pontos)
-        if onpage_data.get('h1_count', 0) == 1:
-            score += 5
-        
-        # Conteúdo suficiente (10 pontos)
-        word_count = onpage_data.get('word_count', 0)
-        if word_count >= 300:
-            score += 10
-        elif word_count >= 150:
-            score += 5
-        
-        # Links internos (5 pontos)
-        if onpage_data.get('links_internos', 0) >= 3:
-            score += 5
+    # META DESCRIPTION (10 pontos)
+    meta_len = onpage_data.get('meta_description_length', 0)
+    if meta_len == 0 or onpage_data.get('meta_description') == 'N/A':
+        score += 0
+    elif 140 <= meta_len <= 160:
+        score += 10
+    elif 120 <= meta_len <= 180:
+        score += 7
+    else:
+        score += 3
     
-    # Palavra-chave (25 pontos)
+    # ELEMENTOS TÉCNICOS (25 pontos)
+    # Links internos (5 pontos)
+    if onpage_data.get('links_internos', 0) >= 5:
+        score += 5
+    elif onpage_data.get('links_internos', 0) >= 2:
+        score += 3
+    
+    # Imagens (5 pontos)
+    total_imgs = onpage_data.get('image_count', 0)
+    imgs_sem_alt = onpage_data.get('images_sem_alt', 0)
+    if total_imgs > 0:
+        img_score = ((total_imgs - imgs_sem_alt) / total_imgs) * 5
+        score += img_score
+    
+    # Palavra-chave (10 pontos)
     if keyword_data and 'keyword_prominence_score' in keyword_data:
-        score += (keyword_data['keyword_prominence_score'] / 100) * 25
+        kw_score = keyword_data.get('keyword_prominence_score', 0)
+        try:
+            score += (float(kw_score) / 100) * 10
+        except (ValueError, TypeError):
+            pass
     
-    # Dados estruturados (10 pontos)
-    if structured_data:
-        if len(structured_data.get('schemas_found', [])) > 0:
-            score += 10
+    # Dados estruturados (5 pontos)
+    if structured_data and len(structured_data.get('schemas_found', [])) > 0:
+        score += 5
     
-    # SEO técnico (10 pontos)
-    if psi_data and 'mobile' in psi_data:
-        seo_score = psi_data['mobile'].get('psi_seo', 0)
-        score += (seo_score / 100) * 10
+    return min(round(score), 100)
+
+# ========== NOVA FUNCIONALIDADE: SITEMAP E MAPEAMENTO ==========
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import networkx as nx
+
+def extract_site_structure(url, max_depth=2, max_pages=20):
+    """Extrai a estrutura do site para criar sitemap"""
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        response = requests.get(url, timeout=10, headers=headers)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.text, "html.parser")
+        base_domain = urlparse(url).netloc
+        
+        # Encontra todos os links internos
+        links = soup.find_all("a", href=True)
+        internal_links = []
+        
+        for link in links:
+            href = link.get('href')
+            if href:
+                # Resolve URL relativa
+                full_url = urljoin(url, href)
+                parsed = urlparse(full_url)
+                
+                # Verifica se é link interno
+                if parsed.netloc == base_domain and not href.startswith('#'):
+                    # Extrai informações do link
+                    link_info = {
+                        'url': full_url,
+                        'path': parsed.path,
+                        'text': link.get_text(strip=True)[:50],  # Primeiros 50 chars
+                        'depth': len(parsed.path.strip('/').split('/')) if parsed.path != '/' else 0
+                    }
+                    internal_links.append(link_info)
+        
+        # Remove duplicatas e limita
+        seen_urls = set()
+        unique_links = []
+        for link in internal_links:
+            if link['url'] not in seen_urls and len(unique_links) < max_pages:
+                seen_urls.add(link['url'])
+                unique_links.append(link)
+        
+        return {
+            'base_url': url,
+            'domain': base_domain,
+            'total_links_found': len(internal_links),
+            'unique_pages': len(unique_links),
+            'structure': unique_links
+        }
+        
+    except Exception as e:
+        return {
+            'error': str(e),
+            'base_url': url,
+            'structure': []
+        }
+
+def create_sitemap_visualization(site_structure):
+    """Cria visualização interativa do sitemap"""
+    if not site_structure.get('structure'):
+        return None
     
-    return min(round(score), max_score)
+    # Prepara dados para o gráfico
+    pages = site_structure['structure']
+    
+    # Agrupa por profundidade
+    depth_groups = {}
+    for page in pages:
+        depth = page['depth']
+        if depth not in depth_groups:
+            depth_groups[depth] = []
+        depth_groups[depth].append(page)
+    
+    # Cria o gráfico hierárquico
+    fig = go.Figure()
+    
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
+    
+    y_positions = {}
+    current_y = 0
+    
+    for depth in sorted(depth_groups.keys()):
+        pages_at_depth = depth_groups[depth]
+        color = colors[depth % len(colors)]
+        
+        x_positions = list(range(len(pages_at_depth)))
+        y_positions[depth] = [current_y] * len(pages_at_depth)
+        
+        # Adiciona nós
+        fig.add_trace(go.Scatter(
+            x=x_positions,
+            y=y_positions[depth],
+            mode='markers+text',
+            marker=dict(
+                size=15,
+                color=color,
+                symbol='circle'
+            ),
+            text=[page['text'][:20] + '...' if len(page['text']) > 20 else page['text'] 
+                  for page in pages_at_depth],
+            textposition="middle center",
+            hovertemplate='<b>%{text}</b><br>URL: %{customdata}<br>Profundidade: ' + str(depth),
+            customdata=[page['url'] for page in pages_at_depth],
+            name=f'Nível {depth}',
+            showlegend=True
+        ))
+        
+        current_y -= 1
+    
+    # Conecta os nós (linhas entre níveis)
+    for depth in sorted(depth_groups.keys())[:-1]:
+        next_depth = depth + 1
+        if next_depth in depth_groups:
+            # Linhas conectando níveis
+            for i in range(len(depth_groups[depth])):
+                for j in range(min(3, len(depth_groups[next_depth]))):  # Máximo 3 conexões
+                    fig.add_trace(go.Scatter(
+                        x=[i, j],
+                        y=[y_positions[depth][0], y_positions[next_depth][0]],
+                        mode='lines',
+                        line=dict(color='gray', width=1),
+                        showlegend=False,
+                        hoverinfo='skip'
+                    ))
+    
+    fig.update_layout(
+        title=f"Mapa da Estrutura: {site_structure.get('domain', 'Site')}",
+        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+        height=400,
+        plot_bgcolor='white',
+        margin=dict(l=20, r=20, t=40, b=20)
+    )
+    
+    return fig
+
+def analyze_site_strategy(site_structure):
+    """Analisa a estratégia de estrutura do site"""
+    if not site_structure.get('structure'):
+        return "Não foi possível analisar a estrutura do site."
+    
+    pages = site_structure['structure']
+    depth_analysis = {}
+    
+    for page in pages:
+        depth = page['depth']
+        if depth not in depth_analysis:
+            depth_analysis[depth] = []
+        depth_analysis[depth].append(page)
+    
+    insights = []
+    
+    # Análise de profundidade
+    max_depth = max(depth_analysis.keys()) if depth_analysis else 0
+    if max_depth <= 2:
+        insights.append("✅ **Estrutura rasa**: Boa para SEO, fácil navegação")
+    elif max_depth <= 4:
+        insights.append("⚠️ **Estrutura média**: Adequada, mas pode ser otimizada")
+    else:
+        insights.append("❌ **Estrutura muito profunda**: Pode dificultar indexação")
+    
+    # Análise de distribuição
+    pages_per_level = [len(depth_analysis.get(i, [])) for i in range(max_depth + 1)]
+    if len(pages_per_level) > 1 and pages_per_level[1] > pages_per_level[0] * 3:
+        insights.append("⚠️ **Muitas páginas no segundo nível**: Considere subcategorias")
+    
+    # Análise de navegação
+    home_links = len(depth_analysis.get(0, []))
+    if home_links > 10:
+        insights.append("⚠️ **Muitos links na home**: Pode diluir autoridade")
+    elif home_links < 3:
+        insights.append("❌ **Poucos links na home**: Pode prejudicar descoberta de conteúdo")
+    
+    return "\n".join(insights)
 
 # ========== FUNÇÕES EXISTENTES (ATUALIZADAS) ==========
 def get_pagespeed_insights(url_to_check: str) -> dict:
@@ -332,8 +557,11 @@ with st.sidebar:
     deep_analysis = st.checkbox("🔍 Análise profunda", value=True,
                                help="Inclui análise de dados estruturados e palavras-chave")
     
-    check_accessibility = st.checkbox("♿ Verificar acessibilidade", value=False,
-                                     help="Testa se as URLs são acessíveis antes da análise")
+    extract_structure = st.checkbox("🗺️ Mapear estrutura do site", value=True,
+                                   help="Cria mapa visual da arquitetura do site")
+    
+    max_pages_sitemap = st.slider("Máx. páginas para sitemap", 10, 50, 20,
+                                 help="Limite de páginas para análise de estrutura")
     
     st.divider()
     st.markdown("### 📊 Métricas Ideais")
@@ -393,11 +621,16 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
                 # Análises adicionais se ativadas
                 keyword_data = {}
                 structured_data = {}
+                site_structure = {}
                 
                 if deep_analysis:
                     if target_keyword:
                         keyword_data = keyword_analysis(soup_principal, target_keyword)
                     structured_data = analyze_structured_data(soup_principal)
+                
+                if extract_structure:
+                    with st.spinner("🗺️ Mapeando estrutura do site..."):
+                        site_structure = extract_site_structure(url_principal, max_pages=max_pages_sitemap)
                 
                 psi_principal = get_pagespeed_insights(url_principal)
                 broken_links_principal = check_broken_links(url_principal, links_principais)
@@ -414,6 +647,32 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
         
         # Calcula score geral
         overall_score = calculate_overall_seo_score(onpage_principal, psi_principal, keyword_data, structured_data)
+        
+        # === SEÇÃO DE SITEMAP ===
+        if site_structure and site_structure.get('structure'):
+            st.markdown("#### 🗺️ Mapa da Estrutura do Site")
+            
+            col_info1, col_info2, col_info3 = st.columns(3)
+            with col_info1:
+                st.metric("📄 Páginas Encontradas", site_structure.get('unique_pages', 0))
+            with col_info2:
+                st.metric("🔗 Total de Links", site_structure.get('total_links_found', 0))
+            with col_info3:
+                max_depth = max([page['depth'] for page in site_structure['structure']]) if site_structure['structure'] else 0
+                st.metric("📏 Profundidade Máxima", max_depth)
+            
+            # Visualização do sitemap
+            sitemap_fig = create_sitemap_visualization(site_structure)
+            if sitemap_fig:
+                st.plotly_chart(sitemap_fig, use_container_width=True)
+            
+            # Análise estratégica da estrutura
+            strategy_insights = analyze_site_strategy(site_structure)
+            if strategy_insights:
+                st.markdown("**💡 Insights da Estrutura:**")
+                st.markdown(strategy_insights)
+            
+            st.divider()
         
         # Primeira linha: Score geral e métricas principais
         col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
@@ -540,29 +799,99 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
 
             # Analisa concorrentes
             progress_bar = st.progress(0)
+            competitor_dashboards = []  # Lista para armazenar dashboards dos concorrentes
+            
             for i, url_comp in enumerate(urls_competidores_limpas):
                 is_valid, url_comp = validate_url(url_comp)
                 if is_valid:
                     try:
-                        onpage_comp, _, soup_comp = onpage_checks(url_comp)
-                        if onpage_comp:
-                            psi_comp = get_pagespeed_insights(url_comp)
-                            keyword_comp = keyword_analysis(soup_comp, target_keyword) if target_keyword else {}
-                            structured_comp = analyze_structured_data(soup_comp)
-                            comp_score = calculate_overall_seo_score(onpage_comp, psi_comp, keyword_comp, structured_comp)
-                            
-                            resultado_comp = {
-                                "URL": url_comp, 
-                                "Site": urlparse(url_comp).netloc, 
-                                **onpage_comp,
-                                "Performance Mobile": psi_comp.get('mobile', {}).get('psi_performance', 0),
-                                "SEO Score": comp_score
-                            }
-                            todos_os_resultados.append(resultado_comp)
+                        with st.spinner(f"Analisando {urlparse(url_comp).netloc}..."):
+                            onpage_comp, _, soup_comp = onpage_checks(url_comp)
+                            if onpage_comp:
+                                psi_comp = get_pagespeed_insights(url_comp)
+                                keyword_comp = keyword_analysis(soup_comp, target_keyword) if target_keyword else {}
+                                structured_comp = analyze_structured_data(soup_comp)
+                                site_structure_comp = extract_site_structure(url_comp, max_pages=max_pages_sitemap//2) if extract_structure else {}
+                                comp_score = calculate_overall_seo_score(onpage_comp, psi_comp, keyword_comp, structured_comp)
+                                
+                                # Armazena dados do concorrente para dashboard individual
+                                competitor_dashboards.append({
+                                    'url': url_comp,
+                                    'domain': urlparse(url_comp).netloc,
+                                    'onpage': onpage_comp,
+                                    'psi': psi_comp,
+                                    'keyword': keyword_comp,
+                                    'structured': structured_comp,
+                                    'site_structure': site_structure_comp,
+                                    'score': comp_score
+                                })
+                                
+                                resultado_comp = {
+                                    "URL": url_comp, 
+                                    "Site": urlparse(url_comp).netloc, 
+                                    **onpage_comp,
+                                    "Performance Mobile": psi_comp.get('mobile', {}).get('psi_performance', 0),
+                                    "SEO Score": comp_score
+                                }
+                                todos_os_resultados.append(resultado_comp)
                     except Exception as e:
                         st.warning(f"Erro ao analisar {url_comp}: {str(e)[:100]}")
                 
                 progress_bar.progress((i + 1) / len(urls_competidores_limpas))
+            
+            # === DASHBOARDS INDIVIDUAIS DOS CONCORRENTES ===
+            if competitor_dashboards:
+                st.markdown("#### 🏢 Análise Individual dos Concorrentes")
+                
+                # Tabs para cada concorrente
+                tab_names = [f"🏢 {comp['domain']}" for comp in competitor_dashboards]
+                if len(tab_names) == 1:
+                    tabs = [st.container()]
+                else:
+                    tabs = st.tabs(tab_names)
+                
+                for i, (tab, comp_data) in enumerate(zip(tabs, competitor_dashboards)):
+                    with tab:
+                        st.markdown(f"**Análise de: {comp_data['domain']}**")
+                        
+                        # Mini dashboard para cada concorrente
+                        col1, col2, col3, col4 = st.columns(4)
+                        
+                        with col1:
+                            mini_gauge = create_seo_score_gauge(comp_data['score'], f"Score: {comp_data['domain']}")
+                            st.plotly_chart(mini_gauge, use_container_width=True)
+                        
+                        with col2:
+                            st.metric("📝 Palavras", comp_data['onpage'].get("word_count", 0))
+                            st.metric("🔗 Links Internos", comp_data['onpage'].get("links_internos", 0))
+                        
+                        with col3:
+                            st.metric("🖼️ Imagens", comp_data['onpage'].get("image_count", 0))
+                            perf_mobile = comp_data['psi'].get('mobile', {}).get('psi_performance', 0)
+                            st.metric("📱 Performance", f"{perf_mobile}/100")
+                        
+                        with col4:
+                            # Análise de palavra-chave se disponível
+                            if comp_data['keyword'] and target_keyword:
+                                kw_score = comp_data['keyword'].get('keyword_prominence_score', 0)
+                                st.metric(f"🎯 {target_keyword}", f"{kw_score}/100")
+                                st.metric("📊 Densidade", f"{comp_data['keyword'].get('keyword_density', 0)}%")
+                            else:
+                                st.metric("🏷️ Title Length", comp_data['onpage'].get('title_length', 0))
+                                h1_count = comp_data['onpage'].get('h1_count', 0)
+                                st.metric("📋 H1 Count", h1_count)
+                        
+                        # Sitemap do concorrente (se disponível)
+                        if comp_data.get('site_structure') and comp_data['site_structure'].get('structure'):
+                            with st.expander(f"🗺️ Ver estrutura de {comp_data['domain']}"):
+                                sitemap_comp = create_sitemap_visualization(comp_data['site_structure'])
+                                if sitemap_comp:
+                                    st.plotly_chart(sitemap_comp, use_container_width=True)
+                                
+                                strategy_comp = analyze_site_strategy(comp_data['site_structure'])
+                                if strategy_comp:
+                                    st.markdown("**Estratégia de Estrutura:**")
+                                    st.markdown(strategy_comp)
             
             # Exibe comparação
             if len(todos_os_resultados) > 1:
@@ -742,7 +1071,9 @@ def generate_competitive_analysis(df_competitivo, url_principal):
     except Exception as e:
         return f"Erro ao gerar análise estratégica: {str(e)}"
 
-# ========== RODAPÉ E INFORMAÇÕES ADICIONAIS ==========
+# ========== ATUALIZAÇÃO DO REQUIREMENTS.TXT ==========
+# Adicionar ao requirements.txt:
+# networkx>=3.0
 st.divider()
 st.markdown("""
 ### 📚 Sobre esta Ferramenta
