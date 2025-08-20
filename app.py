@@ -357,14 +357,13 @@ def extract_site_structure(url, max_depth=2, max_pages=20):
         }
 
 def create_sitemap_visualization(site_structure):
-    """Cria visualização interativa do sitemap"""
+    """Cria visualização melhorada e mais legível do sitemap"""
     if not site_structure.get('structure'):
         return None
     
-    # Prepara dados para o gráfico
     pages = site_structure['structure']
     
-    # Agrupa por profundidade
+    # Agrupa por profundidade e organiza melhor
     depth_groups = {}
     for page in pages:
         depth = page['depth']
@@ -372,65 +371,156 @@ def create_sitemap_visualization(site_structure):
             depth_groups[depth] = []
         depth_groups[depth].append(page)
     
-    # Cria o gráfico hierárquico
+    # Limita páginas por nível para melhor visualização
+    max_per_level = 15
+    for depth in depth_groups:
+        if len(depth_groups[depth]) > max_per_level:
+            depth_groups[depth] = depth_groups[depth][:max_per_level]
+    
     fig = go.Figure()
     
-    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
+    # Cores mais distintas e legíveis
+    colors = ['#2E86AB', '#A23B72', '#F18F01', '#C73E1D', '#592E83', '#1B9A59']
     
-    y_positions = {}
-    current_y = 0
+    all_x = []
+    all_y = []
+    all_text = []
+    all_colors = []
+    all_urls = []
+    
+    # Espaçamento melhor entre níveis
+    level_spacing = 2
     
     for depth in sorted(depth_groups.keys()):
         pages_at_depth = depth_groups[depth]
         color = colors[depth % len(colors)]
         
-        x_positions = list(range(len(pages_at_depth)))
-        y_positions[depth] = [current_y] * len(pages_at_depth)
+        # Distribui páginas horizontalmente de forma mais espaçada
+        if len(pages_at_depth) == 1:
+            x_positions = [0]
+        else:
+            spacing = 8 / (len(pages_at_depth) - 1) if len(pages_at_depth) > 1 else 0
+            x_positions = [-4 + i * spacing for i in range(len(pages_at_depth))]
         
-        # Adiciona nós
-        fig.add_trace(go.Scatter(
-            x=x_positions,
-            y=y_positions[depth],
-            mode='markers+text',
-            marker=dict(
-                size=15,
-                color=color,
-                symbol='circle'
-            ),
-            text=[page['text'][:20] + '...' if len(page['text']) > 20 else page['text'] 
-                  for page in pages_at_depth],
-            textposition="middle center",
-            hovertemplate='<b>%{text}</b><br>URL: %{customdata}<br>Profundidade: ' + str(depth),
-            customdata=[page['url'] for page in pages_at_depth],
-            name=f'Nível {depth}',
-            showlegend=True
-        ))
+        y_position = -depth * level_spacing
         
-        current_y -= 1
+        for i, page in enumerate(pages_at_depth):
+            all_x.append(x_positions[i])
+            all_y.append(y_position)
+            
+            # Texto mais limpo e legível
+            page_text = page['text'].strip()
+            if not page_text or page_text == page['url']:
+                # Extrai nome da página da URL
+                path_parts = page['path'].strip('/').split('/')
+                if path_parts and path_parts[-1]:
+                    page_text = path_parts[-1].replace('-', ' ').replace('_', ' ').title()
+                else:
+                    page_text = "Home" if depth == 0 else f"Página {i+1}"
+            
+            # Limita tamanho do texto
+            if len(page_text) > 25:
+                page_text = page_text[:22] + "..."
+            
+            all_text.append(page_text)
+            all_colors.append(color)
+            all_urls.append(page['url'])
     
-    # Conecta os nós (linhas entre níveis)
+    # Adiciona todos os pontos de uma vez
+    fig.add_trace(go.Scatter(
+        x=all_x,
+        y=all_y,
+        mode='markers+text',
+        marker=dict(
+            size=20,
+            color=all_colors,
+            line=dict(width=2, color='white'),
+            symbol='circle'
+        ),
+        text=all_text,
+        textposition="middle center",
+        textfont=dict(size=10, color='white'),
+        hovertemplate='<b>%{text}</b><br>URL: %{customdata}<br>Nível: %{meta}<extra></extra>',
+        customdata=all_urls,
+        meta=[f"Nível {-y//level_spacing}" for y in all_y],
+        showlegend=False
+    ))
+    
+    # Adiciona linhas conectoras mais sutis
     for depth in sorted(depth_groups.keys())[:-1]:
         next_depth = depth + 1
         if next_depth in depth_groups:
-            # Linhas conectando níveis
-            for i in range(len(depth_groups[depth])):
-                for j in range(min(3, len(depth_groups[next_depth]))):  # Máximo 3 conexões
+            current_level = depth_groups[depth]
+            next_level = depth_groups[next_depth]
+            
+            current_y = -depth * level_spacing
+            next_y = -next_depth * level_spacing
+            
+            # Conecta apenas algumas páginas para não poluir
+            max_connections = min(len(current_level), len(next_level), 8)
+            
+            for i in range(max_connections):
+                if i < len(current_level) and i < len(next_level):
+                    # Calcula posições X baseadas no índice
+                    if len(current_level) == 1:
+                        current_x = 0
+                    else:
+                        current_spacing = 8 / (len(current_level) - 1)
+                        current_x = -4 + i * current_spacing
+                    
+                    if len(next_level) == 1:
+                        next_x = 0
+                    else:
+                        next_spacing = 8 / (len(next_level) - 1)
+                        next_x = -4 + i * next_spacing
+                    
                     fig.add_trace(go.Scatter(
-                        x=[i, j],
-                        y=[y_positions[depth][0], y_positions[next_depth][0]],
+                        x=[current_x, next_x],
+                        y=[current_y, next_y],
                         mode='lines',
-                        line=dict(color='gray', width=1),
+                        line=dict(color='rgba(128,128,128,0.3)', width=1),
                         showlegend=False,
                         hoverinfo='skip'
                     ))
     
+    # Adiciona legenda manual para os níveis
+    for depth in sorted(depth_groups.keys()):
+        if depth < len(colors):
+            fig.add_trace(go.Scatter(
+                x=[None], y=[None],
+                mode='markers',
+                marker=dict(size=15, color=colors[depth]),
+                name=f'Nível {depth}',
+                showlegend=True
+            ))
+    
     fig.update_layout(
-        title=f"Mapa da Estrutura: {site_structure.get('domain', 'Site')}",
-        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-        height=400,
+        title=dict(
+            text=f"🗺️ Arquitetura: {site_structure.get('domain', 'Site')}",
+            font=dict(size=16)
+        ),
+        xaxis=dict(
+            showgrid=False, 
+            zeroline=False, 
+            showticklabels=False,
+            range=[-6, 6]
+        ),
+        yaxis=dict(
+            showgrid=False, 
+            zeroline=False, 
+            showticklabels=False
+        ),
+        height=500,
         plot_bgcolor='white',
-        margin=dict(l=20, r=20, t=40, b=20)
+        paper_bgcolor='white',
+        margin=dict(l=20, r=20, t=50, b=20),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
     )
     
     return fig
@@ -550,11 +640,8 @@ st.set_page_config(page_title="SEO AI Strategist Pro", page_icon="🔭", layout=
 with st.sidebar:
     st.header("⚙️ Configurações de Análise")
     
-    target_keyword = st.text_input("🎯 Palavra-chave principal (opcional)", 
-                                   help="Digite a palavra-chave que você quer otimizar")
-    
     deep_analysis = st.checkbox("🔍 Análise profunda", value=True,
-                               help="Inclui análise de dados estruturados e palavras-chave")
+                               help="Inclui análise de dados estruturados")
     
     extract_structure = st.checkbox("🗺️ Mapear estrutura do site", value=True,
                                    help="Cria mapa visual da arquitetura do site")
@@ -613,13 +700,10 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
                     st.stop()
                 
                 # Análises adicionais se ativadas
-                keyword_data = {}
                 structured_data = {}
                 site_structure = {}
                 
                 if deep_analysis:
-                    if target_keyword:
-                        keyword_data = keyword_analysis(soup_principal, target_keyword)
                     structured_data = analyze_structured_data(soup_principal)
                 
                 if extract_structure:
@@ -639,8 +723,8 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
         st.divider()
         st.subheader(f"📊 Dashboard: {urlparse(url_principal).netloc}")
         
-        # Calcula score geral
-        overall_score = calculate_overall_seo_score(onpage_principal, psi_principal, keyword_data, structured_data)
+        # Calcula score geral (sem palavra-chave)
+        overall_score = calculate_overall_seo_score(onpage_principal, psi_principal, {}, structured_data)
         
         # === SEÇÃO DE SITEMAP ===
         if site_structure and site_structure.get('structure'):
@@ -695,41 +779,7 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
             else:
                 st.metric("🔗 Links Quebrados", "0 ✅")
         
-        # Segunda linha: Análise de palavra-chave (se disponível)
-        if keyword_data:
-            st.markdown("#### 🎯 Análise da Palavra-chave")
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                fig_keyword = create_seo_score_gauge(
-                    keyword_data.get('keyword_prominence_score', 0), 
-                    f"Otimização: {target_keyword}"
-                )
-                st.plotly_chart(fig_keyword, use_container_width=True)
-            
-            with col2:
-                st.metric("🔍 Ocorrências", keyword_data.get('keyword_count', 0))
-                st.metric("📊 Densidade", f"{keyword_data.get('keyword_density', 0)}%")
-            
-            with col3:
-                presence_score = 0
-                if keyword_data.get('in_title'): presence_score += 1
-                if keyword_data.get('in_h1'): presence_score += 1
-                if keyword_data.get('in_meta_desc'): presence_score += 1
-                
-                st.metric("✅ Presença em Elementos", f"{presence_score}/3")
-                
-                presence_details = []
-                if keyword_data.get('in_title'): presence_details.append("Title ✅")
-                else: presence_details.append("Title ❌")
-                if keyword_data.get('in_h1'): presence_details.append("H1 ✅")  
-                else: presence_details.append("H1 ❌")
-                if keyword_data.get('in_meta_desc'): presence_details.append("Meta Desc ✅")
-                else: presence_details.append("Meta Desc ❌")
-                
-                st.write(" | ".join(presence_details))
-        
-        # Terceira linha: Dados estruturados (se análise profunda ativada)
+        # Segunda linha: Performance detalhada
         if deep_analysis and structured_data:
             st.markdown("#### 🏗️ Dados Estruturados")
             col1, col2, col3 = st.columns(3)
@@ -747,7 +797,7 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
                 for schema in structured_data['schemas_found']:
                     st.write(f"- {schema['type']} ({schema['method']})")
         
-        # Quarta linha: Performance detalhada
+        # Performance detalhada
         if psi_principal:
             st.markdown("#### 🚀 Performance Detalhada")
             col1, col2 = st.columns(2)
@@ -803,10 +853,9 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
                             onpage_comp, _, soup_comp = onpage_checks(url_comp)
                             if onpage_comp:
                                 psi_comp = get_pagespeed_insights(url_comp)
-                                keyword_comp = keyword_analysis(soup_comp, target_keyword) if target_keyword else {}
                                 structured_comp = analyze_structured_data(soup_comp)
                                 site_structure_comp = extract_site_structure(url_comp, max_pages=max_pages_sitemap//2) if extract_structure else {}
-                                comp_score = calculate_overall_seo_score(onpage_comp, psi_comp, keyword_comp, structured_comp)
+                                comp_score = calculate_overall_seo_score(onpage_comp, psi_comp, {}, structured_comp)
                                 
                                 # Armazena dados do concorrente para dashboard individual
                                 competitor_dashboards.append({
@@ -814,7 +863,6 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
                                     'domain': urlparse(url_comp).netloc,
                                     'onpage': onpage_comp,
                                     'psi': psi_comp,
-                                    'keyword': keyword_comp,
                                     'structured': structured_comp,
                                     'site_structure': site_structure_comp,
                                     'score': comp_score
@@ -865,15 +913,9 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
                             st.metric("📱 Performance", f"{perf_mobile}/100")
                         
                         with col4:
-                            # Análise de palavra-chave se disponível
-                            if comp_data['keyword'] and target_keyword:
-                                kw_score = comp_data['keyword'].get('keyword_prominence_score', 0)
-                                st.metric(f"🎯 {target_keyword}", f"{kw_score}/100")
-                                st.metric("📊 Densidade", f"{comp_data['keyword'].get('keyword_density', 0)}%")
-                            else:
-                                st.metric("🏷️ Title Length", comp_data['onpage'].get('title_length', 0))
-                                h1_count = comp_data['onpage'].get('h1_count', 0)
-                                st.metric("📋 H1 Count", h1_count)
+                            st.metric("🏷️ Title Length", comp_data['onpage'].get('title_length', 0))
+                            h1_count = comp_data['onpage'].get('h1_count', 0)
+                            st.metric("📋 H1 Count", h1_count)
                         
                         # Sitemap do concorrente (se disponível)
                         if comp_data.get('site_structure') and comp_data['site_structure'].get('structure'):
@@ -951,7 +993,7 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
         
         if target_keyword and keyword_data:
             if keyword_data.get('keyword_prominence_score', 0) < 50:
-                issues.append(f"⚠️ **Palavra-chave '{target_keyword}' mal otimizada** - Baixa proeminência")
+                issues.append(f"⚠️ **Palavra-chave mal otimizada** - Baixa proeminência")
         
         if deep_analysis and structured_data and len(structured_data.get('schemas_found', [])) == 0:
             issues.append("⚠️ **Dados estruturados ausentes** - Oportunidade perdida para rich snippets")
@@ -1009,10 +1051,7 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
                     st.info("Dados de performance não disponíveis")
             
             with tab3:
-                if keyword_data:
-                    st.json(keyword_data)
-                else:
-                    st.info("Análise de palavra-chave não realizada")
+                st.info("Análise de palavra-chave removida para simplificar a ferramenta")
             
             with tab4:
                 if structured_data:
