@@ -588,11 +588,6 @@ if url_principal:
         if validation_result != url_principal:
             st.info(f"✅ URL corrigida para: {validation_result}")
             url_principal = validation_result
-        
-        if check_accessibility:
-            accessible, access_result = test_url_accessibility(url_principal)
-            if not accessible:
-                st.warning(f"⚠️ Problema de acessibilidade: {access_result}")
 
 st.subheader("🏆 Análise Competitiva (Opcional)")
 competidores_raw = st.text_area("URLs dos concorrentes (uma por linha):", 
