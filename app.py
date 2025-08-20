@@ -22,7 +22,10 @@ from nltk.corpus import stopwords
 try:
     nltk.data.find('tokenizers/punkt')
 except LookupError:
-    nltk.download('punkt', quiet=True)
+    try:
+        nltk.download('punkt', quiet=True)
+    except:
+        nltk.download('punkt_tab', quiet=True)
 
 try:
     nltk.data.find('corpora/stopwords')
@@ -64,8 +67,16 @@ def analyze_content_advanced(soup, url):
         script.decompose()
     
     text = body.get_text()
-    sentences = sent_tokenize(text)
-    words = word_tokenize(text.lower())
+    
+    # Tokenização com fallback
+    try:
+        sentences = sent_tokenize(text)
+        words = word_tokenize(text.lower())
+    except:
+        # Fallback simples se NLTK não funcionar
+        sentences = re.split(r'[.!?]+', text)
+        sentences = [s.strip() for s in sentences if len(s.strip()) > 10]
+        words = re.findall(r'\b[a-záàâãéêíóôõúç]+\b', text.lower())
     
     # Remove stopwords
     try:
