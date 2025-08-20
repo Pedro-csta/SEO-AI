@@ -1,110 +1,93 @@
 import streamlit as st
 import requests
-import pandas as pd
 from bs4 import BeautifulSoup
 import google.generativeai as genai
 import os
 
-# ==============================
-# Configuração das APIs
-# ==============================
-GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-PSI_API_KEY = st.secrets["PSI_API_KEY"]
-
+# ========== CONFIGURAÇÃO DA API ==========
+# Defina sua chave Gemini no Streamlit Cloud (Secrets)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 genai.configure(api_key=GEMINI_API_KEY)
 
-# ==============================
-# Funções de análise
-# ==============================
 
-def fetch_page_content(url: str):
-    """Baixa e retorna o HTML da página"""
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        return response.text
-    except Exception as e:
-        return None
-
-def onpage_checks(url: str):
-    """Faz checagens básicas de SEO On Page"""
-    html = fetch_page_content(url)
-    if not html:
-        return {"error": "Não foi possível acessar o site."}
-
-    soup = BeautifulSoup(html, "html.parser")
+# ========== FUNÇÕES DE AUDITORIA ==========
+def onpage_checks(url):
+    """Executa auditoria on-page em uma URL"""
+    response = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+    soup = BeautifulSoup(response.text, "html.parser")
 
     checks = {}
-    checks["title"] = soup.title.string if soup.title else "❌ Ausente"
+
+    # Título
+    checks["title"] = soup.title.string.strip() if soup.title else "❌ Ausente"
+
+    # Meta description
     meta_desc = soup.find("meta", attrs={"name": "description"})
-    checks["meta_description"] = meta_desc["content"] if meta_desc else "❌ Ausente"
-    checks["h1"] = soup.h1.string.strip() if soup.h1 else "❌ Ausente"
-    checks["images_missing_alt"] = len([img for img in soup.find_all("img") if not img.get("alt")])
-    checks["links_count"] = len(soup.find_all("a"))
+    checks["meta_description"] = meta_desc["content"].strip() if meta_desc else "❌ Ausente"
+
+    # H1
+    h1 = soup.find("h1")
+    checks["h1"] = h1.get_text(strip=True) if h1 else "❌ Ausente"
+
+    # Canonical
+    canonical = soup.find("link", rel="canonical")
+    checks["canonical"] = canonical["href"] if canonical else "❌ Ausente"
+
+    # Robots
+    robots = soup.find("meta", attrs={"name": "robots"})
+    checks["robots"] = robots["content"] if robots else "❌ Ausente"
+
+    # Links internos e externos
+    links = soup.find_all("a", href=True)
+    internal_links = [a["href"] for a in links if a["href"].startswith("/")]
+    external_links = [a["href"] for a in links if a["href"].startswith("http")]
+    checks["links_internos"] = len(internal_links)
+    checks["links_externos"] = len(external_links)
 
     return checks
 
-def psi_audit(url: str):
-    """Consulta Google PageSpeed Insights"""
-    api_url = (
-        f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
-        f"?url={url}&strategy=mobile&key={PSI_API_KEY}"
-    )
-    try:
-        response = requests.get(api_url, timeout=30)
-        data = response.json()
-        score = data["lighthouseResult"]["categories"]["performance"]["score"] * 100
-        return {"performance_score": score}
-    except Exception:
-        return {"performance_score": "Erro ao obter"}
 
-def gemini_analysis(checks: dict):
-    """Usa Gemini para gerar recomendações de SEO/GEO"""
+def generate_gemini_recommendations(checks):
+    """Gera recomendações de SEO usando Google Gemini"""
     prompt = f"""
-    Você é um especialista em SEO e GEO On Page.
-    Recebeu o seguinte relatório de auditoria:
+    Você é um consultor de SEO. Aqui estão os resultados de uma auditoria on-page:
 
     {checks}
 
     Gere:
-    - Um score geral de SEO (0 a 100)
-    - Pontos fortes
-    - Pontos fracos
-    - Recomendações práticas para otimização
+    - Um score de 0 a 100 baseado na qualidade da página.
+    - Lista de pontos positivos.
+    - Lista de pontos negativos.
+    - Recomendações práticas para melhorar SEO on-page.
     """
 
-    try:
-        model = genai.GenerativeModel("gemini-1.5-pro")
-        response = model.generate_content(prompt)
-        return response.text
-    except Exception as e:
-        return f"Erro ao gerar análise com Gemini: {e}"
+    gemini_model = genai.GenerativeModel("gemini-1.5-flash")
+    gemini_resp = gemini_model.generate_content(prompt)
 
-# ==============================
-# Interface Streamlit
-# ==============================
-st.set_page_config(page_title="SEO/GEO On Page Auditor", layout="wide")
-st.title("🔎 SEO/GEO On Page Auditor")
+    return gemini_resp.text
 
-url = st.text_input("Digite a URL do site para auditoria:", placeholder="https://exemplo.com")
+
+# ========== INTERFACE STREAMLIT ==========
+st.set_page_config(page_title="SEO AI Auditor", page_icon="🔍", layout="wide")
+
+st.title("🔍 SEO AI Auditor (Gemini)")
+st.write("Ferramenta de auditoria SEO usando **Google Gemini**")
+
+url = st.text_input("Insira a URL para auditoria:")
 
 if st.button("Rodar Auditoria"):
-    if not url:
-        st.warning("Por favor insira uma URL.")
+    if not url.startswith("http"):
+        st.error("Por favor, insira uma URL válida (inclua http ou https).")
     else:
-        with st.spinner("🔍 Analisando site..."):
-            checks = onpage_checks(url)
-            psi = psi_audit(url)
+        with st.spinner("Rodando auditoria..."):
+            try:
+                results = onpage_checks(url)
+                st.subheader("📊 Resultados On-page")
+                st.json(results)
 
-            # Combina os dados
-            full_report = {**checks, **psi}
+                st.subheader("🤖 Recomendações de SEO (Gemini)")
+                gemini_sug = generate_gemini_recommendations(results)
+                st.write(gemini_sug)
 
-            # Mostra resultados
-            st.subheader("✅ Resultados da Checagem")
-            df = pd.DataFrame(full_report.items(), columns=["Fator", "Resultado"])
-            st.table(df)
-
-            # Análise avançada com Gemini
-            st.subheader("🤖 Análise Avançada com Gemini")
-            gemini_report = gemini_analysis(full_report)
-            st.markdown(gemini_report)
+            except Exception as e:
+                st.error(f"Erro ao processar: {e}")
