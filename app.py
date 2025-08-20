@@ -1,5 +1,5 @@
 geo_seo_enabled = st.checkbox("🤖 Análise de GEO (Generative Engine Optimization)", value=True,
-                                 help="Otimização para IAs generativas como ChatGPT, Gemini, Claude")import streamlit as st
+import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 import google.generativeai as genai
