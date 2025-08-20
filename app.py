@@ -13,21 +13,79 @@ import json
 from collections import Counter
 from datetime import datetime, timedelta
 import re
-from textstat import flesch_reading_ease, automated_readability_index
-import nltk
-from nltk.tokenize import sent_tokenize, word_tokenize
-from nltk.corpus import stopwords
 
-# Download necessário para NLTK (executar apenas uma vez)
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt')
+# ========== FUNÇÕES DE LEGIBILIDADE SIMPLIFICADAS ==========
+def simple_sentence_tokenize(text):
+    """Tokenização simples de sentenças sem NLTK"""
+    # Remove quebras de linha e espaços extras
+    text = re.sub(r'\s+', ' ', text.strip())
+    
+    # Divide por pontos finais, exclamações e interrogações
+    sentences = re.split(r'[.!?]+', text)
+    
+    # Remove sentenças muito curtas (menos de 3 palavras)
+    sentences = [s.strip() for s in sentences if len(s.strip().split()) >= 3]
+    
+    return sentences
 
-try:
-    nltk.data.find('corpora/stopwords')
-except LookupError:
-    nltk.download('stopwords')
+def simple_word_tokenize(text):
+    """Tokenização simples de palavras sem NLTK"""
+    # Remove pontuação e converte para minúsculas
+    text = re.sub(r'[^\w\s]', ' ', text.lower())
+    
+    # Divide por espaços e remove palavras muito curtas
+    words = [word.strip() for word in text.split() if len(word.strip()) >= 2]
+    
+    return words
+
+def portuguese_stopwords():
+    """Lista básica de stopwords em português"""
+    return {
+        'a', 'o', 'e', 'é', 'de', 'do', 'da', 'em', 'um', 'uma', 'para', 'com', 'por', 
+        'que', 'se', 'na', 'no', 'os', 'as', 'dos', 'das', 'ao', 'aos', 'à', 'às',
+        'mas', 'ou', 'ser', 'ter', 'seu', 'sua', 'seus', 'suas', 'foi', 'são', 'não',
+        'ele', 'ela', 'eles', 'elas', 'isso', 'esta', 'este', 'estas', 'estes',
+        'como', 'mais', 'muito', 'ainda', 'até', 'já', 'só', 'bem', 'todo', 'toda',
+        'todos', 'todas', 'outro', 'outra', 'outros', 'outras', 'mesmo', 'mesma'
+    }
+
+def calculate_flesch_reading_ease(text):
+    """Calcula o Flesch Reading Ease simplificado"""
+    sentences = simple_sentence_tokenize(text)
+    words = simple_word_tokenize(text)
+    
+    if not sentences or not words:
+        return 0
+    
+    # Conta sílabas aproximadamente (vogais)
+    syllable_count = 0
+    for word in words:
+        syllables = len(re.findall(r'[aeiouáéíóúâêîôûàèìòùãõy]', word.lower()))
+        syllable_count += max(1, syllables)  # Mínimo 1 sílaba por palavra
+    
+    # Fórmula Flesch simplificada
+    avg_sentence_length = len(words) / len(sentences)
+    avg_syllables_per_word = syllable_count / len(words)
+    
+    flesch_score = 206.835 - (1.015 * avg_sentence_length) - (84.6 * avg_syllables_per_word)
+    
+    return max(0, min(100, flesch_score))
+
+def calculate_reading_level(text):
+    """Calcula nível de leitura baseado em comprimento de sentenças e palavras"""
+    sentences = simple_sentence_tokenize(text)
+    words = simple_word_tokenize(text)
+    
+    if not sentences or not words:
+        return 0
+    
+    avg_sentence_length = len(words) / len(sentences)
+    avg_word_length = sum(len(word) for word in words) / len(words)
+    
+    # Fórmula simplificada baseada em complexidade
+    reading_level = (avg_sentence_length * 0.39) + (avg_word_length * 11.8) - 15.59
+    
+    return max(0, reading_level)
 
 # ========== CONFIGURAÇÃO DAS APIS ==========
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -64,24 +122,24 @@ def analyze_content_advanced(soup, url):
         script.decompose()
     
     text = body.get_text()
-    sentences = sent_tokenize(text)
-    words = word_tokenize(text.lower())
+    sentences = simple_sentence_tokenize(text)
+    words = simple_word_tokenize(text)
     
     # Remove stopwords
-    try:
-        stop_words = set(stopwords.words('portuguese'))
-        filtered_words = [word for word in words if word.isalnum() and word not in stop_words]
-    except:
-        filtered_words = [word for word in words if word.isalnum()]
+    stop_words = portuguese_stopwords()
+    filtered_words = [word for word in words if word.isalnum() and word not in stop_words]
     
     # === ANÁLISE DE LEGIBILIDADE ===
     if len(text.strip()) > 50:  # Só analisa se tiver conteúdo suficiente
         try:
-            analysis["readability"]["flesch_score"] = round(flesch_reading_ease(text), 2)
-            analysis["readability"]["ari_score"] = round(automated_readability_index(text), 2)
+            flesch_score = calculate_flesch_reading_ease(text)
+            reading_level = calculate_reading_level(text)
+            
+            analysis["readability"]["flesch_score"] = round(flesch_score, 2)
+            analysis["readability"]["reading_level"] = round(reading_level, 2)
         except:
             analysis["readability"]["flesch_score"] = "N/A"
-            analysis["readability"]["ari_score"] = "N/A"
+            analysis["readability"]["reading_level"] = "N/A"
         
         # Calcula métricas customizadas
         avg_sentence_length = len(words) / len(sentences) if sentences else 0
@@ -2054,9 +2112,10 @@ google-generativeai
 pandas
 plotly
 validators
-nltk
-textstat
 ```
+
+**Nota:** As funcionalidades de análise de legibilidade foram implementadas com algoritmos próprios, 
+não necessitando de bibliotecas externas como NLTK ou textstat.
 """)
 
 # Rate limiting simples para evitar abuso
