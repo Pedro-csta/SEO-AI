@@ -297,10 +297,9 @@ def calculate_overall_seo_score(onpage_data, psi_data, keyword_data, structured_
     
     return min(round(score), 100)
 
-# ========== NOVA FUNCIONALIDADE: SITEMAP E MAPEAMENTO ==========
+# ========== NOVA FUNCIONALIDADE: SITEMAP E MAPEAMENTO (SEM NETWORKX) ==========
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import networkx as nx
 
 def extract_site_structure(url, max_depth=2, max_pages=20):
     """Extrai a estrutura do site para criar sitemap"""
@@ -1071,9 +1070,8 @@ def generate_competitive_analysis(df_competitivo, url_principal):
     except Exception as e:
         return f"Erro ao gerar análise estratégica: {str(e)}"
 
-# ========== ATUALIZAÇÃO DO REQUIREMENTS.TXT ==========
-# Adicionar ao requirements.txt:
-# networkx>=3.0
+# ========== VERSÃO SIMPLIFICADA DO REQUIREMENTS.TXT ==========
+# Removido networkx para evitar conflitos no Streamlit Cloud
 st.divider()
 st.markdown("""
 ### 📚 Sobre esta Ferramenta
