@@ -5,3 +5,5 @@ google-generativeai
 pandas
 tabulate
 plotly
+validators
+urllib3
