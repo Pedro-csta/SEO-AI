@@ -1,375 +1,3 @@
-with st.sidebar:
-    st.header("⚙️ Configurações de Análise")
-    
-    deep_analysis = st.checkbox("🔍 Análise profunda", value=True,
-                               help="Inclui análise de dados estruturados")
-    
-    extract_structure = st.checkbox("🗺️ Mapear estrutura do site", value=True,
-                                   help="Cria mapa visual da arquitetura do site")
-    
-    analyze_tech_stack = st.checkbox("🔧 Detectar tecnologias", value=True,
-                                    help="Identifica CMS, frameworks, analytics, etc.")
-    
-    analyze_security = st.checkbox("🛡️ Análise de segurança", value=True,
-                                  help="Verifica headers de segurança")import streamlit as st
-import requests
-from bs4 import BeautifulSoup
-import google.generativeai as genai
-import os
-import pandas as pd
-from urllib.parse import urljoin, urlparse
-import time
-import plotly.express as px
-import plotly.graph_objects as go
-import validators
-import json
-from collections import Counter
-from datetime import datetime, timedelta
-import re
-
-# ========== CONFIGURAÇÃO DAS APIS ==========
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-gemini_configured = False
-if GEMINI_API_KEY:
-    try:
-        genai.configure(api_key=GEMINI_API_KEY)
-        gemini_configured = True
-    except Exception as e: 
-        st.error(f"Erro ao configurar a API do Gemini: {e}")
-else: 
-    st.warning("Chave da API Gemini (GEMINI_API_KEY) não encontrada...", icon="⚠️")
-
-PSI_API_KEY = os.getenv("PSI_API_KEY")
-
-# ========== TÓPICO 2: VALIDAÇÃO DE URL ROBUSTA ==========
-def validate_url(url):
-    """Validação robusta de URLs"""
-    if not url:
-        return False, "URL não pode estar vazia"
-    
-    # Adiciona http:// se não tiver protocolo
-    if not url.startswith(('http://', 'https://')):
-        url = 'https://' + url
-    
-    if not validators.url(url):
-        return False, "Formato de URL inválido"
-    
-    parsed = urlparse(url)
-    if parsed.scheme not in ['http', 'https']:
-        return False, "URL deve usar protocolo HTTP ou HTTPS"
-    
-    if not parsed.netloc:
-        return False, "URL deve conter um domínio válido"
-    
-    return True, url
-
-def test_url_accessibility(url):
-    """Testa se a URL é acessível"""
-    try:
-        response = requests.head(url, timeout=10, allow_redirects=True)
-        if response.status_code >= 400:
-            return False, f"Erro HTTP {response.status_code}"
-        return True, "URL acessível"
-    except requests.exceptions.RequestException as e:
-        return False, f"Erro de conexão: {str(e)[:100]}"
-
-# ========== TÓPICO 3: ANÁLISE DE PALAVRAS-CHAVE ==========
-def keyword_analysis(soup, target_keyword=None):
-    """Análise avançada de palavras-chave e densidade"""
-    body = soup.find("body")
-    if not body:
-        return {}
-    
-    text = body.get_text().lower()
-    words = [word.strip('.,!?";()[]{}') for word in text.split() if len(word.strip('.,!?";()[]{}')) > 2]
-    
-    analysis = {
-        "total_words": len(words),
-        "unique_words": len(set(words))
-    }
-    
-    if target_keyword:
-        keyword_lower = target_keyword.lower()
-        keyword_count = text.count(keyword_lower)
-        
-        # Verifica presença em elementos importantes
-        title = soup.find("title")
-        h1s = soup.find_all("h1")
-        meta_desc = soup.find("meta", attrs={"name": "description"})
-        
-        analysis.update({
-            "target_keyword": target_keyword,
-            "keyword_count": keyword_count,
-            "keyword_density": round((keyword_count / len(words)) * 100, 2) if words else 0,
-            "in_title": keyword_lower in (title.get_text().lower() if title else ""),
-            "in_h1": any(keyword_lower in h1.get_text().lower() for h1 in h1s),
-            "in_meta_desc": keyword_lower in (meta_desc.get("content", "").lower() if meta_desc else ""),
-            "keyword_prominence_score": 0
-        })
-        
-        # Calcula score de proeminência (0-100)
-        score = 0
-        if analysis["in_title"]: score += 30
-        if analysis["in_h1"]: score += 25
-        if analysis["in_meta_desc"]: score += 20
-        if 1 <= analysis["keyword_density"] <= 3: score += 25
-        elif analysis["keyword_density"] > 0: score += 15
-        
-        analysis["keyword_prominence_score"] = score
-    
-    # Top 10 palavras mais frequentes
-    word_freq = Counter(words)
-    analysis["top_words"] = dict(word_freq.most_common(10))
-    
-    return analysis
-
-# ========== TÓPICO 5: ANÁLISE DETALHADA DE DADOS ESTRUTURADOS ==========
-def analyze_structured_data(soup):
-    """Análise completa dos dados estruturados"""
-    structured_data = {
-        "json_ld_count": 0,
-        "microdata_count": 0,
-        "schemas_found": [],
-        "errors": [],
-        "recommendations": []
-    }
-    
-    # Análise JSON-LD
-    json_scripts = soup.find_all("script", type="application/ld+json")
-    structured_data["json_ld_count"] = len(json_scripts)
-    
-    for i, script in enumerate(json_scripts):
-        try:
-            data = json.loads(script.string.strip())
-            schema_type = data.get("@type", "Unknown")
-            structured_data["schemas_found"].append({
-                "type": schema_type,
-                "method": "JSON-LD",
-                "valid": True,
-                "position": i + 1
-            })
-        except json.JSONDecodeError as e:
-            structured_data["errors"].append(f"JSON-LD inválido na posição {i + 1}: {str(e)[:100]}")
-    
-    # Análise Microdata
-    microdata_items = soup.find_all(attrs={"itemtype": True})
-    structured_data["microdata_count"] = len(microdata_items)
-    
-    for item in microdata_items:
-        itemtype = item.get("itemtype", "")
-        if "schema.org" in itemtype:
-            schema_name = itemtype.split("/")[-1]
-            structured_data["schemas_found"].append({
-                "type": schema_name,
-                "method": "Microdata",
-                "valid": True
-            })
-    
-    # Recomendações
-    if structured_data["json_ld_count"] == 0 and structured_data["microdata_count"] == 0:
-        structured_data["recommendations"].append("Implementar dados estruturados para melhorar a visibilidade nos resultados de busca")
-    
-    if len(structured_data["schemas_found"]) == 0:
-        structured_data["recommendations"].append("Adicionar Schema.org adequado ao tipo de conteúdo (Article, Product, Organization, etc.)")
-    
-    return structured_data
-
-# ========== TÓPICO 6: DASHBOARD COM GAUGES VISUAIS (CORRIGIDO) ==========
-def create_seo_score_gauge(score, title="SEO Score"):
-    """Cria um gauge visual para scores de SEO"""
-    # Garantir que score é numérico
-    if score is None or score == "N/A":
-        score = 0
-    try:
-        score = float(score)
-    except (ValueError, TypeError):
-        score = 0
-    
-    # Determina cor baseada no score
-    if score >= 80:
-        color = "green"
-    elif score >= 60:
-        color = "orange"
-    else:
-        color = "red"
-    
-    fig = go.Figure(go.Indicator(
-        mode = "gauge+number+delta",
-        value = score,
-        domain = {'x': [0, 1], 'y': [0, 1]},
-        title = {'text': title, 'font': {'size': 14}},
-        delta = {'reference': 80, 'suffix': " pts"},
-        gauge = {
-            'axis': {'range': [None, 100], 'tickwidth': 1, 'tickcolor': "darkblue"},
-            'bar': {'color': color},
-            'bgcolor': "white",
-            'borderwidth': 2,
-            'bordercolor': "gray",
-            'steps': [
-                {'range': [0, 30], 'color': 'lightgray'},
-                {'range': [30, 60], 'color': 'lightyellow'},
-                {'range': [60, 80], 'color': 'lightblue'},
-                {'range': [80, 100], 'color': 'lightgreen'}
-            ],
-            'threshold': {
-                'line': {'color': "red", 'width': 4},
-                'thickness': 0.75,
-                'value': 90
-            }
-        }
-    ))
-    
-    fig.update_layout(height=200, margin=dict(l=10, r=10, t=30, b=10))
-    return fig
-
-def calculate_overall_seo_score(onpage_data, psi_data, keyword_data, structured_data):
-    """Calcula um score geral de SEO baseado em múltiplos fatores - VERSÃO CORRIGIDA"""
-    if not onpage_data:
-        return 0
-    
-    score = 0
-    
-    # CRITÉRIOS BÁSICOS (40 pontos) - Sempre disponíveis
-    # Title (15 pontos)
-    title_len = onpage_data.get('title_length', 0)
-    if title_len == 0 or onpage_data.get('title') == 'N/A':
-        score += 0  # Sem title
-    elif 30 <= title_len <= 60:
-        score += 15  # Title ideal
-    elif 20 <= title_len <= 80:
-        score += 10  # Title OK
-    else:
-        score += 5   # Title existe mas não ideal
-    
-    # H1 (10 pontos)
-    h1_count = onpage_data.get('h1_count', 0)
-    if h1_count == 1:
-        score += 10  # H1 perfeito
-    elif h1_count > 1:
-        score += 5   # Tem H1 mas múltiplos
-    # Se 0, não soma nada
-    
-    # Conteúdo (15 pontos)
-    word_count = onpage_data.get('word_count', 0)
-    if word_count >= 500:
-        score += 15
-    elif word_count >= 300:
-        score += 12
-    elif word_count >= 150:
-        score += 8
-    elif word_count > 0:
-        score += 3
-    
-    # PERFORMANCE (25 pontos) - Se disponível
-    if psi_data and 'mobile' in psi_data and psi_data['mobile']:
-        mobile_perf = psi_data['mobile'].get('psi_performance', 0)
-        try:
-            mobile_perf = float(mobile_perf)
-            score += (mobile_perf / 100) * 25
-        except (ValueError, TypeError):
-            pass
-    else:
-        # Se não tiver dados de performance, distribuir pontos nos outros critérios
-        score += 10  # Pontos base
-    
-    # META DESCRIPTION (10 pontos)
-    meta_len = onpage_data.get('meta_description_length', 0)
-    if meta_len == 0 or onpage_data.get('meta_description') == 'N/A':
-        score += 0
-    elif 140 <= meta_len <= 160:
-        score += 10
-    elif 120 <= meta_len <= 180:
-        score += 7
-    else:
-        score += 3
-    
-    # ELEMENTOS TÉCNICOS (25 pontos)
-    # Links internos (5 pontos)
-    if onpage_data.get('links_internos', 0) >= 5:
-        score += 5
-    elif onpage_data.get('links_internos', 0) >= 2:
-        score += 3
-    
-    # Imagens (5 pontos)
-    total_imgs = onpage_data.get('image_count', 0)
-    imgs_sem_alt = onpage_data.get('images_sem_alt', 0)
-    if total_imgs > 0:
-        img_score = ((total_imgs - imgs_sem_alt) / total_imgs) * 5
-        score += img_score
-    
-    # Palavra-chave (10 pontos)
-    if keyword_data and 'keyword_prominence_score' in keyword_data:
-        kw_score = keyword_data.get('keyword_prominence_score', 0)
-        try:
-            score += (float(kw_score) / 100) * 10
-        except (ValueError, TypeError):
-            pass
-    
-    # Dados estruturados (5 pontos)
-    if structured_data and len(structured_data.get('schemas_found', [])) > 0:
-        score += 5
-    
-    return min(round(score), 100)
-
-# ========== NOVA FUNCIONALIDADE: SITEMAP E MAPEAMENTO (SEM NETWORKX) ==========
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-
-def extract_site_structure(url, max_depth=2, max_pages=20):
-    """Extrai a estrutura do site para criar sitemap"""
-    try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        response = requests.get(url, timeout=10, headers=headers)
-        response.raise_for_status()
-        
-        soup = BeautifulSoup(response.text, "html.parser")
-        base_domain = urlparse(url).netloc
-        
-        # Encontra todos os links internos
-        links = soup.find_all("a", href=True)
-        internal_links = []
-        
-        for link in links:
-            href = link.get('href')
-            if href:
-                # Resolve URL relativa
-                full_url = urljoin(url, href)
-                parsed = urlparse(full_url)
-                
-                # Verifica se é link interno
-                if parsed.netloc == base_domain and not href.startswith('#'):
-                    # Extrai informações do link
-                    link_info = {
-                        'url': full_url,
-                        'path': parsed.path,
-                        'text': link.get_text(strip=True)[:50],  # Primeiros 50 chars
-                        'depth': len(parsed.path.strip('/').split('/')) if parsed.path != '/' else 0
-                    }
-                    internal_links.append(link_info)
-        
-        # Remove duplicatas e limita
-        seen_urls = set()
-        unique_links = []
-        for link in internal_links:
-            if link['url'] not in seen_urls and len(unique_links) < max_pages:
-                seen_urls.add(link['url'])
-                unique_links.append(link)
-        
-        return {
-            'base_url': url,
-            'domain': base_domain,
-            'total_links_found': len(internal_links),
-            'unique_pages': len(unique_links),
-            'structure': unique_links
-        }
-        
-    except Exception as e:
-        return {
-            'error': str(e),
-            'base_url': url,
-            'structure': []
-        }
-
 def create_sitemap_visualization(site_structure):
     """Cria visualização profissional e legível do sitemap"""
     if not site_structure.get('structure'):
@@ -611,139 +239,6 @@ def analyze_site_strategy(site_structure):
     
     return "\n".join(insights)
 
-# ========== FUNÇÕES EXISTENTES (ATUALIZADAS) ==========
-def get_pagespeed_insights(url_to_check: str) -> dict:
-    if not PSI_API_KEY: return {}
-    insights_data = {"redirected": False}
-    strategies = ["mobile", "desktop"]
-    for strategy in strategies:
-        api_url = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={url_to_check}&strategy={strategy}&key={PSI_API_KEY}"
-        try:
-            response = requests.get(api_url, timeout=60)
-            response.raise_for_status()
-            data = response.json()
-            final_url = data.get('lighthouseResult', {}).get('finalUrl', url_to_check)
-            insights_data['final_url'] = final_url
-            if url_to_check != final_url: insights_data['redirected'] = True
-            categories = data.get('lighthouseResult', {}).get('categories', {})
-            scores = {f"psi_{category.replace('-', '_')}": int(categories.get(category, {}).get('score', 0) * 100) for category in ['performance', 'accessibility', 'best-practices', 'seo']}
-            insights_data[strategy] = scores
-        except requests.exceptions.RequestException: insights_data[strategy] = {}
-    return insights_data
-
-def check_broken_links(base_url: str, internal_links: list) -> list:
-    broken_links = []
-    headers = {"User-Agent": "Mozilla/5.0"}
-    for link in internal_links[:10]:  # Limita a 10 links para não sobrecarregar
-        full_url = urljoin(base_url, link)
-        try:
-            response = requests.head(full_url, headers=headers, timeout=5, allow_redirects=True)
-            if response.status_code >= 400: broken_links.append({"url": full_url, "status": response.status_code})
-        except requests.RequestException: broken_links.append({"url": full_url, "status": "Erro de Conexão"})
-        time.sleep(0.1)
-    return broken_links
-
-def onpage_checks(url):
-    try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        response = requests.get(url, timeout=10, headers=headers)
-        response.raise_for_status()
-    except requests.exceptions.RequestException: return None, [], None, {}, {}, {}
-    
-    soup = BeautifulSoup(response.text, "html.parser")
-    checks = {}
-    
-    title_tag = soup.title
-    checks["title"] = title_tag.string.strip() if title_tag else "N/A"
-    checks["title_length"] = len(checks["title"]) if title_tag else 0
-    
-    meta_desc = soup.find("meta", attrs={"name": "description"})
-    checks["meta_description"] = meta_desc["content"].strip() if meta_desc and meta_desc.get("content") else "N/A"
-    checks["meta_description_length"] = len(checks["meta_description"]) if meta_desc and meta_desc.get("content") else 0
-    
-    checks["h1_count"] = len(soup.find_all("h1"))
-    
-    all_links = soup.find_all("a", href=True)
-    valid_links = [a['href'] for a in all_links if a['href'] and not a['href'].startswith(('#', 'tel:', 'mailto:'))]
-    internal_links = [link for link in valid_links if urlparse(url).netloc in link or link.startswith('/')]
-    checks["links_internos"] = len(internal_links)
-    
-    checks["image_count"] = len(soup.find_all("img"))
-    
-    # Conta imagens sem alt text
-    images = soup.find_all("img")
-    images_sem_alt = [img for img in images if not img.get("alt", "").strip()]
-    checks["images_sem_alt"] = len(images_sem_alt)
-    
-    body_text = soup.find("body").get_text(separator=" ", strip=True) if soup.find("body") else ""
-    checks["word_count"] = len(body_text.split())
-    
-    # NOVAS ANÁLISES
-    # Detecta tecnologias
-    technologies = detect_technologies(soup, response.headers, response.text)
-    
-    # Análise de segurança
-    security_analysis = analyze_security_headers(dict(response.headers))
-    
-    # Análise de acessibilidade
-    accessibility_analysis = analyze_accessibility_basics(soup)
-    
-    return checks, internal_links, soup, technologies, security_analysis, accessibility_analysis
-
-# ========== INTERFACE STREAMLIT MELHORADA ==========
-st.set_page_config(page_title="SEO AI Strategist Pro", page_icon="🔭", layout="wide")
-
-# Sidebar com configurações
-with st.sidebar:
-    st.header("⚙️ Configurações de Análise")
-    
-    deep_analysis = st.checkbox("🔍 Análise profunda", value=True,
-                               help="Inclui análise de dados estruturados")
-    
-    extract_structure = st.checkbox("🗺️ Mapear estrutura do site", value=True,
-                                   help="Cria mapa visual da arquitetura do site")
-    
-    analyze_tech_stack = st.checkbox("🔧 Detectar tecnologias", value=True,
-                                    help="Identifica CMS, frameworks, analytics, etc.")
-    
-    analyze_security = st.checkbox("🛡️ Análise de segurança", value=True,
-                                  help="Verifica headers de segurança")
-    
-    max_pages_sitemap = st.slider("Máx. páginas para sitemap", 10, 50, 20,
-                                 help="Limite de páginas para análise de estrutura")
-    
-    st.divider()
-    st.markdown("### 📊 Métricas Ideais")
-    st.info("""
-    **Title:** 30-60 caracteres  
-    **Meta Description:** 150-160 caracteres  
-    **H1:** Apenas 1 por página  
-    **Conteúdo:** Mínimo 300 palavras  
-    **Performance:** Acima de 80  
-    **Segurança:** Acima de 70  
-    **Acessibilidade:** Acima de 90
-    """)
-    
-    st.divider()
-    st.markdown("### 🎯 Funcionalidades Avançadas")
-    st.markdown("""
-    **🔧 Detecção de Tecnologias:**
-    - CMS (WordPress, Shopify, etc.)
-    - Frameworks JS/CSS
-    - Ferramentas de Analytics
-    - CDNs e Servidores Web
-    
-    **🛡️ Análise de Segurança:**
-    - Headers de segurança HTTP
-    - Proteção XSS
-    - Políticas de conteúdo
-    
-    **♿ Acessibilidade:**
-    - Alt text em imagens
-    - Labels em formulários
-    - Estrutura de headings
-    """)
-
 # ========== ANÁLISE DE VELOCIDADE APROFUNDADA ==========
 def create_speed_metrics_dashboard(psi_data):
     """Cria dashboard detalhado de métricas de velocidade"""
@@ -830,7 +325,7 @@ def create_competitive_radar_chart(all_competitors_data):
             fill='toself',
             name=competitor.get('domain', f'Site {i+1}'),
             line=dict(color=colors[i % len(colors)], width=2),
-            fillcolor=f'rgba({colors[i % len(colors)][1:3]}, {colors[i % len(colors)][3:5]}, {colors[i % len(colors)][5:7]}, 0.1)'
+            fillcolor=f'rgba({int(colors[i % len(colors)][1:3], 16)}, {int(colors[i % len(colors)][3:5], 16)}, {int(colors[i % len(colors)][5:7], 16)}, 0.1)'
         ))
     
     fig.update_layout(
@@ -900,6 +395,105 @@ def generate_automated_insights(main_data, competitors_data):
     
     return insights
 
+# ========== ANÁLISE COMPETITIVA COM IA ==========
+def generate_competitive_analysis(df_competitivo, url_principal):
+    """Gera análise competitiva com IA"""
+    if not gemini_configured: 
+        return "Análise por IA desabilitada. Configure a API do Gemini para obter insights estratégicos."
+    
+    dados_markdown = df_competitivo.to_markdown(index=False)
+    site_principal = urlparse(url_principal).netloc
+    
+    prompt = f"""
+    Você é um estrategista de SEO sênior analisando a posição competitiva de um site.
+
+    **Site Principal:** {site_principal}
+
+    **Dados Comparativos:**
+    {dados_markdown}
+
+    **Sua Missão:**
+    Analise os dados e forneça insights estratégicos em português do Brasil usando formatação Markdown:
+
+    ## 🎯 POSIÇÃO COMPETITIVA
+    Avalie a posição do site principal em relação aos concorrentes. Identifique se está liderando, competindo ou perdendo em cada métrica.
+
+    ## 💪 VANTAGENS COMPETITIVAS
+    Liste 2-3 pontos onde o site principal supera a concorrência e como capitalizar essas vantagens.
+
+    ## ⚠️ GAPS IDENTIFICADOS
+    Identifique as principais lacunas onde os concorrentes estão à frente e o impacto dessas diferenças.
+
+    ## 🚀 ESTRATÉGIA DE AÇÃO
+    Forneça um plano de ação priorizado com 4-5 iniciativas específicas para superar a concorrência.
+
+    ## 📊 BENCHMARKS RECOMENDADOS
+    Sugira métricas-alvo baseadas no melhor desempenho observado na comparação.
+
+    Seja específico, acionável e focado em resultados mensuráveis.
+    """
+    
+    try:
+        gemini_model = genai.GenerativeModel("gemini-1.5-flash")
+        gemini_resp = gemini_model.generate_content(prompt)
+        return gemini_resp.text
+    except Exception as e:
+        return f"Erro ao gerar análise estratégica: {str(e)}"
+
+# ========== INTERFACE STREAMLIT ==========
+st.set_page_config(page_title="SEO AI Strategist Pro", page_icon="🔭", layout="wide")
+
+# Sidebar com configurações
+with st.sidebar:
+    st.header("⚙️ Configurações de Análise")
+    
+    deep_analysis = st.checkbox("🔍 Análise profunda", value=True,
+                               help="Inclui análise de dados estruturados")
+    
+    extract_structure = st.checkbox("🗺️ Mapear estrutura do site", value=True,
+                                   help="Cria mapa visual da arquitetura do site")
+    
+    analyze_tech_stack = st.checkbox("🔧 Detectar tecnologias", value=True,
+                                    help="Identifica CMS, frameworks, analytics, etc.")
+    
+    analyze_security = st.checkbox("🛡️ Análise de segurança", value=True,
+                                  help="Verifica headers de segurança")
+    
+    max_pages_sitemap = st.slider("Máx. páginas para sitemap", 10, 50, 20,
+                                 help="Limite de páginas para análise de estrutura")
+    
+    st.divider()
+    st.markdown("### 📊 Métricas Ideais")
+    st.info("""
+    **Title:** 30-60 caracteres  
+    **Meta Description:** 150-160 caracteres  
+    **H1:** Apenas 1 por página  
+    **Conteúdo:** Mínimo 300 palavras  
+    **Performance:** Acima de 80  
+    **Segurança:** Acima de 70  
+    **Acessibilidade:** Acima de 90
+    """)
+    
+    st.divider()
+    st.markdown("### 🎯 Funcionalidades Avançadas")
+    st.markdown("""
+    **🔧 Detecção de Tecnologias:**
+    - CMS (WordPress, Shopify, etc.)
+    - Frameworks JS/CSS
+    - Ferramentas de Analytics
+    - CDNs e Servidores Web
+    
+    **🛡️ Análise de Segurança:**
+    - Headers de segurança HTTP
+    - Proteção XSS
+    - Políticas de conteúdo
+    
+    **♿ Acessibilidade:**
+    - Alt text em imagens
+    - Labels em formulários
+    - Estrutura de headings
+    """)
+
 st.title("🔭 SEO AI Strategist Pro")
 st.markdown("Análise avançada de SEO com IA, comparação competitiva e insights estratégicos.")
 
@@ -935,7 +529,7 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
         # --- ANÁLISE PRINCIPAL ---
         with st.spinner(f"🔍 Analisando {urlparse(url_principal).netloc}..."):
             try:
-                onpage_principal, links_principais, soup_principal = onpage_checks(url_principal)
+                onpage_principal, links_principais, soup_principal, technologies_principal, security_principal, accessibility_principal = onpage_checks(url_principal)
                 if onpage_principal is None:
                     st.error(f"Não foi possível analisar {url_principal}")
                     st.stop()
@@ -994,7 +588,7 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
             st.divider()
         
         # === SEÇÃO DE TECNOLOGIAS ===
-        if technologies_principal:
+        if technologies_principal and analyze_tech_stack:
             st.markdown("#### 🔧 Stack Tecnológico")
             
             # Cria visualização do stack tecnológico
@@ -1009,41 +603,42 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
                         st.write(f"**{category.replace('_', ' ').title()}:** {', '.join(techs)}")
         
         # === SEÇÃO DE SEGURANÇA E ACESSIBILIDADE ===
-        col_sec, col_acc = st.columns(2)
-        
-        with col_sec:
-            st.markdown("#### 🛡️ Análise de Segurança")
-            if security_principal:
-                sec_score = security_principal.get('score', 0)
-                sec_grade = security_principal.get('grade', 'D')
-                
-                # Gauge de segurança
-                security_gauge = create_seo_score_gauge(sec_score, f"Segurança: {sec_grade}")
-                st.plotly_chart(security_gauge, use_container_width=True)
-                
-                # Detalhes dos headers
-                with st.expander("Headers de segurança"):
-                    for header, status in security_principal.get('details', {}).items():
-                        st.write(f"{header}: {status}")
-        
-        with col_acc:
-            st.markdown("#### ♿ Análise de Acessibilidade")
-            if accessibility_principal:
-                acc_score = accessibility_principal.get('score', 0)
-                acc_grade = accessibility_principal.get('grade', 'D')
-                
-                # Gauge de acessibilidade  
-                accessibility_gauge = create_seo_score_gauge(acc_score, f"Acessibilidade: {acc_grade}")
-                st.plotly_chart(accessibility_gauge, use_container_width=True)
-                
-                # Issues encontradas
-                issues = accessibility_principal.get('issues', [])
-                if issues:
-                    with st.expander("Problemas de acessibilidade"):
-                        for issue in issues:
-                            st.write(f"• {issue}")
-                else:
-                    st.success("Nenhum problema básico de acessibilidade encontrado!")
+        if analyze_security:
+            col_sec, col_acc = st.columns(2)
+            
+            with col_sec:
+                st.markdown("#### 🛡️ Análise de Segurança")
+                if security_principal:
+                    sec_score = security_principal.get('score', 0)
+                    sec_grade = security_principal.get('grade', 'D')
+                    
+                    # Gauge de segurança
+                    security_gauge = create_seo_score_gauge(sec_score, f"Segurança: {sec_grade}")
+                    st.plotly_chart(security_gauge, use_container_width=True)
+                    
+                    # Detalhes dos headers
+                    with st.expander("Headers de segurança"):
+                        for header, status in security_principal.get('details', {}).items():
+                            st.write(f"{header}: {status}")
+            
+            with col_acc:
+                st.markdown("#### ♿ Análise de Acessibilidade")
+                if accessibility_principal:
+                    acc_score = accessibility_principal.get('score', 0)
+                    acc_grade = accessibility_principal.get('grade', 'D')
+                    
+                    # Gauge de acessibilidade  
+                    accessibility_gauge = create_seo_score_gauge(acc_score, f"Acessibilidade: {acc_grade}")
+                    st.plotly_chart(accessibility_gauge, use_container_width=True)
+                    
+                    # Issues encontradas
+                    issues = accessibility_principal.get('issues', [])
+                    if issues:
+                        with st.expander("Problemas de acessibilidade"):
+                            for issue in issues:
+                                st.write(f"• {issue}")
+                    else:
+                        st.success("Nenhum problema básico de acessibilidade encontrado!")
         
         # Primeira linha: Score geral e métricas principais
         col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
@@ -1071,24 +666,6 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
                 st.metric("🔗 Links Quebrados", len(broken_links_principal), delta_color="inverse")
             else:
                 st.metric("🔗 Links Quebrados", "0 ✅")
-        
-        # Segunda linha: Performance detalhada
-        if deep_analysis and structured_data:
-            st.markdown("#### 🏗️ Dados Estruturados")
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.metric("📋 Schemas JSON-LD", structured_data.get('json_ld_count', 0))
-            with col2:
-                st.metric("🏷️ Microdata", structured_data.get('microdata_count', 0))
-            with col3:
-                total_schemas = len(structured_data.get('schemas_found', []))
-                st.metric("✅ Total de Schemas", total_schemas)
-            
-            if structured_data.get('schemas_found'):
-                st.write("**Schemas detectados:**")
-                for schema in structured_data['schemas_found']:
-                    st.write(f"- {schema['type']} ({schema['method']})")
         
         # Performance detalhada com Core Web Vitals
         if psi_principal:
@@ -1129,6 +706,24 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
                     fig_desktop = create_seo_score_gauge(perf_desk, "Performance Desktop")
                     st.plotly_chart(fig_desktop, use_container_width=True)
                     st.metric("SEO Score", f"{seo_desk}/100")
+        
+        # Segunda linha: Dados estruturados (se análise profunda ativada)
+        if deep_analysis and structured_data:
+            st.markdown("#### 🏗️ Dados Estruturados")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("📋 Schemas JSON-LD", structured_data.get('json_ld_count', 0))
+            with col2:
+                st.metric("🏷️ Microdata", structured_data.get('microdata_count', 0))
+            with col3:
+                total_schemas = len(structured_data.get('schemas_found', []))
+                st.metric("✅ Total de Schemas", total_schemas)
+            
+            if structured_data.get('schemas_found'):
+                st.write("**Schemas detectados:**")
+                for schema in structured_data['schemas_found']:
+                    st.write(f"- {schema['type']} ({schema['method']})")
         
         # --- ANÁLISE COMPETITIVA (SE HOUVER) ---
         urls_competidores_limpas = [url.strip() for url in competidores_raw.splitlines() if url.strip()][:3]  # Máximo 3
@@ -1380,7 +975,7 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
             st.warning("🚀 **Bom potencial!** Otimize:")
             recommendations = [
                 "📱 Performance mobile (Core Web Vitals)",
-                "🎯 Otimização de palavra-chave principal",
+                "🎯 Otimização de conteúdo e estrutura",
                 "🖼️ Alt text em todas as imagens",
                 "🏗️ Implementação de dados estruturados"
             ]
@@ -1423,52 +1018,132 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
                 }
                 st.json(combined_analysis)
 
-# ========== FUNÇÃO EXISTENTE PARA ANÁLISE COMPETITIVA COM IA ==========
-def generate_competitive_analysis(df_competitivo, url_principal):
-    """Gera análise competitiva com IA"""
-    if not gemini_configured: 
-        return "Análise por IA desabilitada. Configure a API do Gemini para obter insights estratégicos."
-    
-    dados_markdown = df_competitivo.to_markdown(index=False)
-    site_principal = urlparse(url_principal).netloc
-    
-    prompt = f"""
-    Você é um estrategista de SEO sênior analisando a posição competitiva de um site.
+# ========== RODAPÉ E INFORMAÇÕES ==========
+st.divider()
+st.markdown("""
+### 🚀 Sobre o SEO AI Strategist Pro
 
-    **Site Principal:** {site_principal}
+**A ferramenta mais completa de análise SEO do mercado**, combinando análise técnica avançada com inteligência artificial para fornecer insights estratégicos únicos.
 
-    **Dados Comparativos:**
-    {dados_markdown}
+#### 🎯 **Funcionalidades Principais:**
+- ✅ **Performance & Core Web Vitals** (Google PageSpeed Insights)
+- ✅ **Análise on-page completa** com validação robusta
+- ✅ **Detecção de tecnologias** (tipo Wappalyzer) - CMS, frameworks, analytics
+- ✅ **Análise de segurança** - Headers HTTP e proteções
+- ✅ **Auditoria de acessibilidade** - WCAG básico
+- ✅ **Mapeamento de arquitetura** - Visualização da estrutura do site
+- ✅ **Comparação competitiva avançada** - Radar 360° e insights automatizados
+- ✅ **Score geral de SEO** - Algoritmo proprietário
+- ✅ **Dados estruturados** - Schema.org e microdata
 
-    **Sua Missão:**
-    Analise os dados e forneça insights estratégicos em português do Brasil usando formatação Markdown:
+#### 🔧 **Tecnologias Detectadas:**
+**CMS:** WordPress, Shopify, Drupal, Magento, Webflow, Wix  
+**Analytics:** Google Analytics, Facebook Pixel, Hotjar, Mixpanel  
+**Frameworks:** React, Vue.js, Angular, jQuery, Bootstrap, Tailwind  
+**CDN:** Cloudflare, Amazon CloudFront, Google Cloud  
+**E-commerce:** WooCommerce, Shopify, BigCommerce  
 
-    ## 🎯 POSIÇÃO COMPETITIVA
-    Avalie a posição do site principal em relação aos concorrentes. Identifique se está liderando, competindo ou perdendo em cada métrica.
+#### 🛡️ **Análise de Segurança:**
+- Content Security Policy (CSP)
+- HTTP Strict Transport Security (HSTS) 
+- X-Frame-Options
+- X-XSS-Protection
+- Headers de proteção de conteúdo
 
-    ## 💪 VANTAGENS COMPETITIVAS
-    Liste 2-3 pontos onde o site principal supera a concorrência e como capitalizar essas vantagens.
+#### ♿ **Auditoria de Acessibilidade:**
+- Alt text em imagens
+- Labels em formulários
+- Estrutura semântica de headings
+- Compliance WCAG básico
 
-    ## ⚠️ GAPS IDENTIFICADOS
-    Identifique as principais lacunas onde os concorrentes estão à frente e o impacto dessas diferenças.
+#### 🎨 **Visualizações Avançadas:**
+- **Gráficos Gauge** para scores individuais
+- **Radar 360°** para comparação competitiva
+- **Mapa hierárquico** da arquitetura do site
+- **Dashboards interativos** com Plotly
 
-    ## 🚀 ESTRATÉGIA DE AÇÃO
-    Forneça um plano de ação priorizado com 4-5 iniciativas específicas para superar a concorrência.
+#### 🤖 **Inteligência Artificial:**
+- **Insights automatizados** baseados em análise comparativa
+- **Recomendações priorizadas** por impacto
+- **Estratégias competitivas** personalizadas
 
-    ## 📊 BENCHMARKS RECOMENDADOS
-    Sugira métricas-alvo baseadas no melhor desempenho observado na comparação.
+**Desenvolvido com:** Python, Streamlit, Google Gemini AI, PageSpeed Insights API, Plotly, BeautifulSoup
 
-    Seja específico, acionável e focado em resultados mensuráveis.
-    """
-    
+---
+💡 **Próximas atualizações:** Análise de backlinks, monitoramento de posições, alertas automáticos, relatórios em PDF
+""")
+
+# Rate limiting e controle de uso
+if 'analysis_count' not in st.session_state:
+    st.session_state.analysis_count = 0
+    st.session_state.last_analysis_time = datetime.now()
+
+# Reset contador a cada hora
+if datetime.now() - st.session_state.last_analysis_time > timedelta(hours=1):
+    st.session_state.analysis_count = 0
+    st.session_state.last_analysis_time = datetime.now()import streamlit as st
+import requests
+from bs4 import BeautifulSoup
+import google.generativeai as genai
+import os
+import pandas as pd
+from urllib.parse import urljoin, urlparse
+import time
+import plotly.express as px
+import plotly.graph_objects as go
+import validators
+import json
+from collections import Counter
+from datetime import datetime, timedelta
+import re
+
+# ========== CONFIGURAÇÃO DAS APIS ==========
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+gemini_configured = False
+if GEMINI_API_KEY:
     try:
-        gemini_model = genai.GenerativeModel("gemini-1.5-flash")
-        gemini_resp = gemini_model.generate_content(prompt)
-        return gemini_resp.text
-    except Exception as e:
-        return f"Erro ao gerar análise estratégica: {str(e)}"
+        genai.configure(api_key=GEMINI_API_KEY)
+        gemini_configured = True
+    except Exception as e: 
+        st.error(f"Erro ao configurar a API do Gemini: {e}")
+else: 
+    st.warning("Chave da API Gemini (GEMINI_API_KEY) não encontrada...", icon="⚠️")
 
-# ========== NOVA FUNCIONALIDADE: ANÁLISE DE TECNOLOGIAS ==========
+PSI_API_KEY = os.getenv("PSI_API_KEY")
+
+# ========== VALIDAÇÃO DE URL ROBUSTA ==========
+def validate_url(url):
+    """Validação robusta de URLs"""
+    if not url:
+        return False, "URL não pode estar vazia"
+    
+    # Adiciona http:// se não tiver protocolo
+    if not url.startswith(('http://', 'https://')):
+        url = 'https://' + url
+    
+    if not validators.url(url):
+        return False, "Formato de URL inválido"
+    
+    parsed = urlparse(url)
+    if parsed.scheme not in ['http', 'https']:
+        return False, "URL deve usar protocolo HTTP ou HTTPS"
+    
+    if not parsed.netloc:
+        return False, "URL deve conter um domínio válido"
+    
+    return True, url
+
+def test_url_accessibility(url):
+    """Testa se a URL é acessível"""
+    try:
+        response = requests.head(url, timeout=10, allow_redirects=True)
+        if response.status_code >= 400:
+            return False, f"Erro HTTP {response.status_code}"
+        return True, "URL acessível"
+    except requests.exceptions.RequestException as e:
+        return False, f"Erro de conexão: {str(e)[:100]}"
+
+# ========== ANÁLISE DE TECNOLOGIAS ==========
 def detect_technologies(soup, response_headers, response_text):
     """Detecta tecnologias usadas no site (tipo Wappalyzer)"""
     technologies = {
@@ -1788,66 +1463,322 @@ def analyze_accessibility_basics(soup):
         'issues': accessibility_issues,
         'grade': 'A' if accessibility_score >= 90 else 'B' if accessibility_score >= 70 else 'C' if accessibility_score >= 50 else 'D'
     }
-st.divider()
-st.markdown("""
-### 🚀 Sobre o SEO AI Strategist Pro
 
-**A ferramenta mais completa de análise SEO do mercado**, combinando análise técnica avançada com inteligência artificial para fornecer insights estratégicos únicos.
+# ========== ANÁLISE DETALHADA DE DADOS ESTRUTURADOS ==========
+def analyze_structured_data(soup):
+    """Análise completa dos dados estruturados"""
+    structured_data = {
+        "json_ld_count": 0,
+        "microdata_count": 0,
+        "schemas_found": [],
+        "errors": [],
+        "recommendations": []
+    }
+    
+    # Análise JSON-LD
+    json_scripts = soup.find_all("script", type="application/ld+json")
+    structured_data["json_ld_count"] = len(json_scripts)
+    
+    for i, script in enumerate(json_scripts):
+        try:
+            data = json.loads(script.string.strip())
+            schema_type = data.get("@type", "Unknown")
+            structured_data["schemas_found"].append({
+                "type": schema_type,
+                "method": "JSON-LD",
+                "valid": True,
+                "position": i + 1
+            })
+        except json.JSONDecodeError as e:
+            structured_data["errors"].append(f"JSON-LD inválido na posição {i + 1}: {str(e)[:100]}")
+    
+    # Análise Microdata
+    microdata_items = soup.find_all(attrs={"itemtype": True})
+    structured_data["microdata_count"] = len(microdata_items)
+    
+    for item in microdata_items:
+        itemtype = item.get("itemtype", "")
+        if "schema.org" in itemtype:
+            schema_name = itemtype.split("/")[-1]
+            structured_data["schemas_found"].append({
+                "type": schema_name,
+                "method": "Microdata",
+                "valid": True
+            })
+    
+    # Recomendações
+    if structured_data["json_ld_count"] == 0 and structured_data["microdata_count"] == 0:
+        structured_data["recommendations"].append("Implementar dados estruturados para melhorar a visibilidade nos resultados de busca")
+    
+    if len(structured_data["schemas_found"]) == 0:
+        structured_data["recommendations"].append("Adicionar Schema.org adequado ao tipo de conteúdo (Article, Product, Organization, etc.)")
+    
+    return structured_data
 
-#### 🎯 **Funcionalidades Principais:**
-- ✅ **Performance & Core Web Vitals** (Google PageSpeed Insights)
-- ✅ **Análise on-page completa** com validação robusta
-- ✅ **Detecção de tecnologias** (tipo Wappalyzer) - CMS, frameworks, analytics
-- ✅ **Análise de segurança** - Headers HTTP e proteções
-- ✅ **Auditoria de acessibilidade** - WCAG básico
-- ✅ **Mapeamento de arquitetura** - Visualização da estrutura do site
-- ✅ **Comparação competitiva avançada** - Radar 360° e insights automatizados
-- ✅ **Score geral de SEO** - Algoritmo proprietário
-- ✅ **Dados estruturados** - Schema.org e microdata
+# ========== DASHBOARD COM GAUGES VISUAIS ==========
+def create_seo_score_gauge(score, title="SEO Score"):
+    """Cria um gauge visual para scores de SEO"""
+    # Garantir que score é numérico
+    if score is None or score == "N/A":
+        score = 0
+    try:
+        score = float(score)
+    except (ValueError, TypeError):
+        score = 0
+    
+    # Determina cor baseada no score
+    if score >= 80:
+        color = "green"
+    elif score >= 60:
+        color = "orange"
+    else:
+        color = "red"
+    
+    fig = go.Figure(go.Indicator(
+        mode = "gauge+number+delta",
+        value = score,
+        domain = {'x': [0, 1], 'y': [0, 1]},
+        title = {'text': title, 'font': {'size': 14}},
+        delta = {'reference': 80, 'suffix': " pts"},
+        gauge = {
+            'axis': {'range': [None, 100], 'tickwidth': 1, 'tickcolor': "darkblue"},
+            'bar': {'color': color},
+            'bgcolor': "white",
+            'borderwidth': 2,
+            'bordercolor': "gray",
+            'steps': [
+                {'range': [0, 30], 'color': 'lightgray'},
+                {'range': [30, 60], 'color': 'lightyellow'},
+                {'range': [60, 80], 'color': 'lightblue'},
+                {'range': [80, 100], 'color': 'lightgreen'}
+            ],
+            'threshold': {
+                'line': {'color': "red", 'width': 4},
+                'thickness': 0.75,
+                'value': 90
+            }
+        }
+    ))
+    
+    fig.update_layout(height=200, margin=dict(l=10, r=10, t=30, b=10))
+    return fig
 
-#### 🔧 **Tecnologias Detectadas:**
-**CMS:** WordPress, Shopify, Drupal, Magento, Webflow, Wix  
-**Analytics:** Google Analytics, Facebook Pixel, Hotjar, Mixpanel  
-**Frameworks:** React, Vue.js, Angular, jQuery, Bootstrap, Tailwind  
-**CDN:** Cloudflare, Amazon CloudFront, Google Cloud  
-**E-commerce:** WooCommerce, Shopify, BigCommerce  
+def calculate_overall_seo_score(onpage_data, psi_data, keyword_data, structured_data):
+    """Calcula um score geral de SEO baseado em múltiplos fatores - VERSÃO CORRIGIDA"""
+    if not onpage_data:
+        return 0
+    
+    score = 0
+    
+    # CRITÉRIOS BÁSICOS (40 pontos) - Sempre disponíveis
+    # Title (15 pontos)
+    title_len = onpage_data.get('title_length', 0)
+    if title_len == 0 or onpage_data.get('title') == 'N/A':
+        score += 0  # Sem title
+    elif 30 <= title_len <= 60:
+        score += 15  # Title ideal
+    elif 20 <= title_len <= 80:
+        score += 10  # Title OK
+    else:
+        score += 5   # Title existe mas não ideal
+    
+    # H1 (10 pontos)
+    h1_count = onpage_data.get('h1_count', 0)
+    if h1_count == 1:
+        score += 10  # H1 perfeito
+    elif h1_count > 1:
+        score += 5   # Tem H1 mas múltiplos
+    # Se 0, não soma nada
+    
+    # Conteúdo (15 pontos)
+    word_count = onpage_data.get('word_count', 0)
+    if word_count >= 500:
+        score += 15
+    elif word_count >= 300:
+        score += 12
+    elif word_count >= 150:
+        score += 8
+    elif word_count > 0:
+        score += 3
+    
+    # PERFORMANCE (25 pontos) - Se disponível
+    if psi_data and 'mobile' in psi_data and psi_data['mobile']:
+        mobile_perf = psi_data['mobile'].get('psi_performance', 0)
+        try:
+            mobile_perf = float(mobile_perf)
+            score += (mobile_perf / 100) * 25
+        except (ValueError, TypeError):
+            pass
+    else:
+        # Se não tiver dados de performance, distribuir pontos nos outros critérios
+        score += 10  # Pontos base
+    
+    # META DESCRIPTION (10 pontos)
+    meta_len = onpage_data.get('meta_description_length', 0)
+    if meta_len == 0 or onpage_data.get('meta_description') == 'N/A':
+        score += 0
+    elif 140 <= meta_len <= 160:
+        score += 10
+    elif 120 <= meta_len <= 180:
+        score += 7
+    else:
+        score += 3
+    
+    # ELEMENTOS TÉCNICOS (25 pontos)
+    # Links internos (5 pontos)
+    if onpage_data.get('links_internos', 0) >= 5:
+        score += 5
+    elif onpage_data.get('links_internos', 0) >= 2:
+        score += 3
+    
+    # Imagens (5 pontos)
+    total_imgs = onpage_data.get('image_count', 0)
+    imgs_sem_alt = onpage_data.get('images_sem_alt', 0)
+    if total_imgs > 0:
+        img_score = ((total_imgs - imgs_sem_alt) / total_imgs) * 5
+        score += img_score
+    
+    # Dados estruturados (5 pontos)
+    if structured_data and len(structured_data.get('schemas_found', [])) > 0:
+        score += 5
+    
+    return min(round(score), 100)
 
-#### 🛡️ **Análise de Segurança:**
-- Content Security Policy (CSP)
-- HTTP Strict Transport Security (HSTS) 
-- X-Frame-Options
-- X-XSS-Protection
-- Headers de proteção de conteúdo
+# ========== FUNÇÕES DE AUDITORIA ==========
+def get_pagespeed_insights(url_to_check: str) -> dict:
+    if not PSI_API_KEY: return {}
+    insights_data = {"redirected": False}
+    strategies = ["mobile", "desktop"]
+    for strategy in strategies:
+        api_url = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={url_to_check}&strategy={strategy}&key={PSI_API_KEY}"
+        try:
+            response = requests.get(api_url, timeout=60)
+            response.raise_for_status()
+            data = response.json()
+            final_url = data.get('lighthouseResult', {}).get('finalUrl', url_to_check)
+            insights_data['final_url'] = final_url
+            if url_to_check != final_url: insights_data['redirected'] = True
+            categories = data.get('lighthouseResult', {}).get('categories', {})
+            scores = {f"psi_{category.replace('-', '_')}": int(categories.get(category, {}).get('score', 0) * 100) for category in ['performance', 'accessibility', 'best-practices', 'seo']}
+            insights_data[strategy] = scores
+        except requests.exceptions.RequestException: insights_data[strategy] = {}
+    return insights_data
 
-#### ♿ **Auditoria de Acessibilidade:**
-- Alt text em imagens
-- Labels em formulários
-- Estrutura semântica de headings
-- Compliance WCAG básico
+def check_broken_links(base_url: str, internal_links: list) -> list:
+    broken_links = []
+    headers = {"User-Agent": "Mozilla/5.0"}
+    for link in internal_links[:10]:  # Limita a 10 links para não sobrecarregar
+        full_url = urljoin(base_url, link)
+        try:
+            response = requests.head(full_url, headers=headers, timeout=5, allow_redirects=True)
+            if response.status_code >= 400: broken_links.append({"url": full_url, "status": response.status_code})
+        except requests.RequestException: broken_links.append({"url": full_url, "status": "Erro de Conexão"})
+        time.sleep(0.1)
+    return broken_links
 
-#### 🎨 **Visualizações Avançadas:**
-- **Gráficos Gauge** para scores individuais
-- **Radar 360°** para comparação competitiva
-- **Mapa hierárquico** da arquitetura do site
-- **Dashboards interativos** com Plotly
+def onpage_checks(url):
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        response = requests.get(url, timeout=10, headers=headers)
+        response.raise_for_status()
+    except requests.exceptions.RequestException: 
+        return None, [], None, {}, {}, {}
+    
+    soup = BeautifulSoup(response.text, "html.parser")
+    checks = {}
+    
+    title_tag = soup.title
+    checks["title"] = title_tag.string.strip() if title_tag else "N/A"
+    checks["title_length"] = len(checks["title"]) if title_tag else 0
+    
+    meta_desc = soup.find("meta", attrs={"name": "description"})
+    checks["meta_description"] = meta_desc["content"].strip() if meta_desc and meta_desc.get("content") else "N/A"
+    checks["meta_description_length"] = len(checks["meta_description"]) if meta_desc and meta_desc.get("content") else 0
+    
+    checks["h1_count"] = len(soup.find_all("h1"))
+    
+    all_links = soup.find_all("a", href=True)
+    valid_links = [a['href'] for a in all_links if a['href'] and not a['href'].startswith(('#', 'tel:', 'mailto:'))]
+    internal_links = [link for link in valid_links if urlparse(url).netloc in link or link.startswith('/')]
+    checks["links_internos"] = len(internal_links)
+    
+    checks["image_count"] = len(soup.find_all("img"))
+    
+    # Conta imagens sem alt text
+    images = soup.find_all("img")
+    images_sem_alt = [img for img in images if not img.get("alt", "").strip()]
+    checks["images_sem_alt"] = len(images_sem_alt)
+    
+    body_text = soup.find("body").get_text(separator=" ", strip=True) if soup.find("body") else ""
+    checks["word_count"] = len(body_text.split())
+    
+    # NOVAS ANÁLISES
+    # Detecta tecnologias
+    technologies = detect_technologies(soup, response.headers, response.text)
+    
+    # Análise de segurança
+    security_analysis = analyze_security_headers(dict(response.headers))
+    
+    # Análise de acessibilidade
+    accessibility_analysis = analyze_accessibility_basics(soup)
+    
+    return checks, internal_links, soup, technologies, security_analysis, accessibility_analysis
 
-#### 🤖 **Inteligência Artificial:**
-- **Insights automatizados** baseados em análise comparativa
-- **Recomendações priorizadas** por impacto
-- **Estratégias competitivas** personalizadas
+# ========== SITEMAP E MAPEAMENTO ==========
+def extract_site_structure(url, max_depth=2, max_pages=20):
+    """Extrai a estrutura do site para criar sitemap"""
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        response = requests.get(url, timeout=10, headers=headers)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.text, "html.parser")
+        base_domain = urlparse(url).netloc
+        
+        # Encontra todos os links internos
+        links = soup.find_all("a", href=True)
+        internal_links = []
+        
+        for link in links:
+            href = link.get('href')
+            if href:
+                # Resolve URL relativa
+                full_url = urljoin(url, href)
+                parsed = urlparse(full_url)
+                
+                # Verifica se é link interno
+                if parsed.netloc == base_domain and not href.startswith('#'):
+                    # Extrai informações do link
+                    link_info = {
+                        'url': full_url,
+                        'path': parsed.path,
+                        'text': link.get_text(strip=True)[:50],  # Primeiros 50 chars
+                        'depth': len(parsed.path.strip('/').split('/')) if parsed.path != '/' else 0
+                    }
+                    internal_links.append(link_info)
+        
+        # Remove duplicatas e limita
+        seen_urls = set()
+        unique_links = []
+        for link in internal_links:
+            if link['url'] not in seen_urls and len(unique_links) < max_pages:
+                seen_urls.add(link['url'])
+                unique_links.append(link)
+        
+        return {
+            'base_url': url,
+            'domain': base_domain,
+            'total_links_found': len(internal_links),
+            'unique_pages': len(unique_links),
+            'structure': unique_links
+        }
+        
+    except Exception as e:
+        return {
+            'error': str(e),
+            'base_url': url,
+            'structure': []
+        }
 
-**Desenvolvido com:** Python, Streamlit, Google Gemini AI, PageSpeed Insights API, Plotly, BeautifulSoup
-
----
-💡 **Próximas atualizações:** Análise de backlinks, monitoramento de posições, alertas automáticos, relatórios em PDF
-""")
-
-# Rate limiting e controle de uso
-if 'analysis_count' not in st.session_state:
-    st.session_state.analysis_count = 0
-    st.session_state.last_analysis_time = datetime.now()
-
-# Reset contador a cada hora
-if datetime.now() - st.session_state.last_analysis_time > timedelta(hours=1):
-    st.session_state.analysis_count = 0
-    st.session_state.last_analysis_time = datetime.now()
+def create_sitemap_visualization(site_structure):
+    """Cria visualização profissional e legível
