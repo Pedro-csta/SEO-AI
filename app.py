@@ -357,13 +357,13 @@ def extract_site_structure(url, max_depth=2, max_pages=20):
         }
 
 def create_sitemap_visualization(site_structure):
-    """Cria visualização melhorada e mais legível do sitemap"""
+    """Cria visualização profissional e legível do sitemap"""
     if not site_structure.get('structure'):
         return None
     
     pages = site_structure['structure']
     
-    # Agrupa por profundidade e organiza melhor
+    # Agrupa e organiza por profundidade
     depth_groups = {}
     for page in pages:
         depth = page['depth']
@@ -372,155 +372,188 @@ def create_sitemap_visualization(site_structure):
         depth_groups[depth].append(page)
     
     # Limita páginas por nível para melhor visualização
-    max_per_level = 15
+    max_per_level = 12
     for depth in depth_groups:
         if len(depth_groups[depth]) > max_per_level:
             depth_groups[depth] = depth_groups[depth][:max_per_level]
     
+    # Cria um layout mais profissional tipo organograma
     fig = go.Figure()
     
-    # Cores mais distintas e legíveis
-    colors = ['#2E86AB', '#A23B72', '#F18F01', '#C73E1D', '#592E83', '#1B9A59']
+    # Paleta de cores profissional
+    colors = ['#1E3A8A', '#7C3AED', '#059669', '#DC2626', '#EA580C', '#0891B2']
     
-    all_x = []
-    all_y = []
-    all_text = []
-    all_colors = []
-    all_urls = []
-    
-    # Espaçamento melhor entre níveis
-    level_spacing = 2
+    # Configurações de layout
+    level_height = 150  # Espaçamento vertical entre níveis
+    max_width = 1200   # Largura máxima do gráfico
     
     for depth in sorted(depth_groups.keys()):
         pages_at_depth = depth_groups[depth]
         color = colors[depth % len(colors)]
         
-        # Distribui páginas horizontalmente de forma mais espaçada
-        if len(pages_at_depth) == 1:
+        # Calcula posicionamento horizontal
+        num_pages = len(pages_at_depth)
+        if num_pages == 1:
             x_positions = [0]
         else:
-            spacing = 8 / (len(pages_at_depth) - 1) if len(pages_at_depth) > 1 else 0
-            x_positions = [-4 + i * spacing for i in range(len(pages_at_depth))]
+            spacing = max_width / (num_pages + 1)
+            x_positions = [spacing * (i + 1) - max_width/2 for i in range(num_pages)]
         
-        y_position = -depth * level_spacing
+        y_position = -depth * level_height
+        
+        # Prepara textos mais limpos
+        clean_texts = []
+        hover_texts = []
         
         for i, page in enumerate(pages_at_depth):
-            all_x.append(x_positions[i])
-            all_y.append(y_position)
-            
-            # Texto mais limpo e legível
+            # Extrai texto limpo
             page_text = page['text'].strip()
-            if not page_text or page_text == page['url']:
-                # Extrai nome da página da URL
+            
+            if not page_text or len(page_text) < 3:
+                # Extrai da URL
                 path_parts = page['path'].strip('/').split('/')
                 if path_parts and path_parts[-1]:
-                    page_text = path_parts[-1].replace('-', ' ').replace('_', ' ').title()
+                    page_text = path_parts[-1].replace('-', ' ').replace('_', ' ')
+                    page_text = ' '.join(word.capitalize() for word in page_text.split())
                 else:
                     page_text = "Home" if depth == 0 else f"Página {i+1}"
             
-            # Limita tamanho do texto
-            if len(page_text) > 25:
-                page_text = page_text[:22] + "..."
+            # Limita e formata o texto
+            if len(page_text) > 15:
+                display_text = page_text[:12] + "..."
+            else:
+                display_text = page_text
             
-            all_text.append(page_text)
-            all_colors.append(color)
-            all_urls.append(page['url'])
+            clean_texts.append(display_text)
+            
+            # Texto do hover mais informativo
+            hover_text = f"<b>{page_text}</b><br>"
+            hover_text += f"URL: {page['url']}<br>"
+            hover_text += f"Nível: {depth}<br>"
+            hover_text += f"Profundidade: {len(page['path'].strip('/').split('/')) if page['path'] != '/' else 0}"
+            hover_texts.append(hover_text)
+        
+        # Adiciona os nós com estilo profissional
+        fig.add_trace(go.Scatter(
+            x=x_positions,
+            y=[y_position] * len(x_positions),
+            mode='markers+text',
+            marker=dict(
+                size=45,
+                color=color,
+                line=dict(width=3, color='white'),
+                symbol='circle'
+            ),
+            text=clean_texts,
+            textposition="middle center",
+            textfont=dict(
+                size=11, 
+                color='white',
+                family="Arial Black"
+            ),
+            hovertemplate='%{customdata}<extra></extra>',
+            customdata=hover_texts,
+            name=f'Nível {depth}',
+            showlegend=True
+        ))
+        
+        # Adiciona labels de nível
+        fig.add_annotation(
+            x=-max_width/2 - 100,
+            y=y_position,
+            text=f"<b>Nível {depth}</b>",
+            showarrow=False,
+            font=dict(size=14, color=color, family="Arial"),
+            xanchor="right"
+        )
     
-    # Adiciona todos os pontos de uma vez
-    fig.add_trace(go.Scatter(
-        x=all_x,
-        y=all_y,
-        mode='markers+text',
-        marker=dict(
-            size=20,
-            color=all_colors,
-            line=dict(width=2, color='white'),
-            symbol='circle'
-        ),
-        text=all_text,
-        textposition="middle center",
-        textfont=dict(size=10, color='white'),
-        hovertemplate='<b>%{text}</b><br>URL: %{customdata}<br>Nível: %{meta}<extra></extra>',
-        customdata=all_urls,
-        meta=[f"Nível {-y//level_spacing}" for y in all_y],
-        showlegend=False
-    ))
-    
-    # Adiciona linhas conectoras mais sutis
+    # Adiciona conexões mais elegantes
     for depth in sorted(depth_groups.keys())[:-1]:
         next_depth = depth + 1
         if next_depth in depth_groups:
             current_level = depth_groups[depth]
             next_level = depth_groups[next_depth]
             
-            current_y = -depth * level_spacing
-            next_y = -next_depth * level_spacing
+            current_y = -depth * level_height
+            next_y = -next_depth * level_height
             
-            # Conecta apenas algumas páginas para não poluir
-            max_connections = min(len(current_level), len(next_level), 8)
-            
-            for i in range(max_connections):
-                if i < len(current_level) and i < len(next_level):
-                    # Calcula posições X baseadas no índice
-                    if len(current_level) == 1:
-                        current_x = 0
-                    else:
-                        current_spacing = 8 / (len(current_level) - 1)
-                        current_x = -4 + i * current_spacing
-                    
-                    if len(next_level) == 1:
-                        next_x = 0
-                    else:
-                        next_spacing = 8 / (len(next_level) - 1)
-                        next_x = -4 + i * next_spacing
+            # Conecta home page com páginas principais
+            if depth == 0 and len(current_level) == 1:
+                home_x = 0
+                next_spacing = max_width / (len(next_level) + 1)
+                
+                for i, _ in enumerate(next_level):
+                    next_x = next_spacing * (i + 1) - max_width/2
                     
                     fig.add_trace(go.Scatter(
-                        x=[current_x, next_x],
+                        x=[home_x, next_x],
                         y=[current_y, next_y],
                         mode='lines',
-                        line=dict(color='rgba(128,128,128,0.3)', width=1),
+                        line=dict(
+                            color='rgba(100,100,100,0.4)', 
+                            width=2,
+                            dash='dot'
+                        ),
                         showlegend=False,
                         hoverinfo='skip'
                     ))
+            else:
+                # Conecta níveis subsequentes de forma mais sutil
+                max_connections = min(len(current_level), len(next_level), 6)
+                for i in range(max_connections):
+                    if i < len(current_level) and i < len(next_level):
+                        current_spacing = max_width / (len(current_level) + 1)
+                        next_spacing = max_width / (len(next_level) + 1)
+                        
+                        current_x = current_spacing * (i + 1) - max_width/2
+                        next_x = next_spacing * (i + 1) - max_width/2
+                        
+                        fig.add_trace(go.Scatter(
+                            x=[current_x, next_x],
+                            y=[current_y, next_y],
+                            mode='lines',
+                            line=dict(
+                                color='rgba(150,150,150,0.3)', 
+                                width=1
+                            ),
+                            showlegend=False,
+                            hoverinfo='skip'
+                        ))
     
-    # Adiciona legenda manual para os níveis
-    for depth in sorted(depth_groups.keys()):
-        if depth < len(colors):
-            fig.add_trace(go.Scatter(
-                x=[None], y=[None],
-                mode='markers',
-                marker=dict(size=15, color=colors[depth]),
-                name=f'Nível {depth}',
-                showlegend=True
-            ))
-    
+    # Layout profissional
     fig.update_layout(
         title=dict(
-            text=f"🗺️ Arquitetura: {site_structure.get('domain', 'Site')}",
-            font=dict(size=16)
+            text=f"🏗️ Arquitetura do Site: {site_structure.get('domain', 'Site')}",
+            font=dict(size=18, family="Arial", color="#1F2937"),
+            x=0.5,
+            xanchor="center"
         ),
         xaxis=dict(
             showgrid=False, 
             zeroline=False, 
             showticklabels=False,
-            range=[-6, 6]
+            range=[-max_width/2 - 150, max_width/2 + 50]
         ),
         yaxis=dict(
             showgrid=False, 
             zeroline=False, 
-            showticklabels=False
+            showticklabels=False,
+            scaleanchor="x",
+            scaleratio=1
         ),
-        height=500,
-        plot_bgcolor='white',
+        height=600,
+        plot_bgcolor='#FAFAFA',
         paper_bgcolor='white',
-        margin=dict(l=20, r=20, t=50, b=20),
+        margin=dict(l=50, r=50, t=80, b=50),
         legend=dict(
             orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        )
+            yanchor="top",
+            y=-0.05,
+            xanchor="center",
+            x=0.5,
+            font=dict(size=12, family="Arial")
+        ),
+        hovermode='closest'
     )
     
     return fig
@@ -990,10 +1023,6 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
         
         if psi_principal and psi_principal.get('mobile', {}).get('psi_performance', 0) < 60:
             issues.append("⚠️ **Performance baixa** - Afeta ranking e experiência")
-        
-        if target_keyword and keyword_data:
-            if keyword_data.get('keyword_prominence_score', 0) < 50:
-                issues.append(f"⚠️ **Palavra-chave mal otimizada** - Baixa proeminência")
         
         if deep_analysis and structured_data and len(structured_data.get('schemas_found', [])) == 0:
             issues.append("⚠️ **Dados estruturados ausentes** - Oportunidade perdida para rich snippets")
