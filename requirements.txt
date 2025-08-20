@@ -7,3 +7,7 @@ tabulate
 plotly
 validators
 urllib3
+networkxulate
+plotly
+validators
+urllib3
