@@ -477,18 +477,18 @@ with st.sidebar:
     st.divider()
     st.markdown("### 🎯 Funcionalidades Avançadas")
     st.markdown("""
-    **🔧 Detecção de Tecnologias:**
+    **Detecção de Tecnologias:**
     - CMS (WordPress, Shopify, etc.)
     - Frameworks JS/CSS
     - Ferramentas de Analytics
     - CDNs e Servidores Web
     
-    **🛡️ Análise de Segurança:**
+    **Análise de Segurança:**
     - Headers de segurança HTTP
     - Proteção XSS
     - Políticas de conteúdo
     
-    **♿ Acessibilidade:**
+    **Acessibilidade:**
     - Alt text em imagens
     - Labels em formulários
     - Estrutura de headings
