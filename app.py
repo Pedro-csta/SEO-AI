@@ -1,110 +1,110 @@
-# Streamlit SEO/GEO Auditor – App
+import streamlit as st
+import requests
+import pandas as pd
+from bs4 import BeautifulSoup
+import google.generativeai as genai
+import os
 
-## Estrutura do Projeto
-```
-seo-geo-auditor/
-├── app.py              # Aplicação principal Streamlit
-├── requirements.txt    # Dependências
-├── README.md           # Documentação completa
-└── .streamlit/
-    └── secrets.toml    # Chaves privadas
-```
+# ==============================
+# Configuração das APIs
+# ==============================
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+PSI_API_KEY = st.secrets["PSI_API_KEY"]
 
----
+genai.configure(api_key=GEMINI_API_KEY)
 
-## app.py
-```python
-# (código completo da aplicação já incluído no canvas anterior)
-```
+# ==============================
+# Funções de análise
+# ==============================
 
----
+def fetch_page_content(url: str):
+    """Baixa e retorna o HTML da página"""
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        return response.text
+    except Exception as e:
+        return None
 
-## requirements.txt
-```
-streamlit
-requests
-beautifulsoup4
-google-generativeai
-pandas
-```
+def onpage_checks(url: str):
+    """Faz checagens básicas de SEO On Page"""
+    html = fetch_page_content(url)
+    if not html:
+        return {"error": "Não foi possível acessar o site."}
 
----
+    soup = BeautifulSoup(html, "html.parser")
 
-## README.md
+    checks = {}
+    checks["title"] = soup.title.string if soup.title else "❌ Ausente"
+    meta_desc = soup.find("meta", attrs={"name": "description"})
+    checks["meta_description"] = meta_desc["content"] if meta_desc else "❌ Ausente"
+    checks["h1"] = soup.h1.string.strip() if soup.h1 else "❌ Ausente"
+    checks["images_missing_alt"] = len([img for img in soup.find_all("img") if not img.get("alt")])
+    checks["links_count"] = len(soup.find_all("a"))
 
-# SEO/GEO Auditor (Streamlit + Gemini)
+    return checks
 
-Ferramenta para auditar sites com base em checklist SEO On-Page + GEO (Generative Engine Optimization), atribuindo **score de prioridade (P0→P3 + GEO)** e gerando recomendações automáticas com o **Google Gemini API**.
+def psi_audit(url: str):
+    """Consulta Google PageSpeed Insights"""
+    api_url = (
+        f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
+        f"?url={url}&strategy=mobile&key={PSI_API_KEY}"
+    )
+    try:
+        response = requests.get(api_url, timeout=30)
+        data = response.json()
+        score = data["lighthouseResult"]["categories"]["performance"]["score"] * 100
+        return {"performance_score": score}
+    except Exception:
+        return {"performance_score": "Erro ao obter"}
 
----
+def gemini_analysis(checks: dict):
+    """Usa Gemini para gerar recomendações de SEO/GEO"""
+    prompt = f"""
+    Você é um especialista em SEO e GEO On Page.
+    Recebeu o seguinte relatório de auditoria:
 
-## 🚀 Funcionalidades
-- Rastreamento do domínio informado (mesmo host).
-- Checklist P0 (crítico) → P3 (nice-to-have) + GEO.
-- Score ponderado por prioridade.
-- Integração com **Gemini** → diagnóstico robusto, recomendações, quick wins.
-- Integração com **PageSpeed Insights** (opcional) → métricas Core Web Vitals.
-- Exportação em **JSON** (relatório completo) e **CSV** (achados).
-- Interface em **Streamlit** com progresso, tabelas e métricas.
+    {checks}
 
----
+    Gere:
+    - Um score geral de SEO (0 a 100)
+    - Pontos fortes
+    - Pontos fracos
+    - Recomendações práticas para otimização
+    """
 
-## 🔑 Configuração das Chaves
-Crie o arquivo `.streamlit/secrets.toml` na raiz do projeto:
-```toml
-GEMINI_API_KEY = "sua-chave"
-PSI_API_KEY = "sua-chave-opcional"
-```
+    try:
+        model = genai.GenerativeModel("gemini-1.5-pro")
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"Erro ao gerar análise com Gemini: {e}"
 
----
+# ==============================
+# Interface Streamlit
+# ==============================
+st.set_page_config(page_title="SEO/GEO On Page Auditor", layout="wide")
+st.title("🔎 SEO/GEO On Page Auditor")
 
-## 📦 Instalação
-Clone o repositório e instale as dependências:
-```bash
-git clone https://github.com/seuusuario/seo-geo-auditor.git
-cd seo-geo-auditor
-pip install -r requirements.txt
-```
+url = st.text_input("Digite a URL do site para auditoria:", placeholder="https://exemplo.com")
 
----
+if st.button("Rodar Auditoria"):
+    if not url:
+        st.warning("Por favor insira uma URL.")
+    else:
+        with st.spinner("🔍 Analisando site..."):
+            checks = onpage_checks(url)
+            psi = psi_audit(url)
 
-## ▶️ Execução
-Rode a aplicação localmente:
-```bash
-streamlit run app.py
-```
+            # Combina os dados
+            full_report = {**checks, **psi}
 
----
+            # Mostra resultados
+            st.subheader("✅ Resultados da Checagem")
+            df = pd.DataFrame(full_report.items(), columns=["Fator", "Resultado"])
+            st.table(df)
 
-## 🌐 Deploy no Streamlit Cloud
-1. Suba o repositório para o GitHub.
-2. Vá em [Streamlit Cloud](https://share.streamlit.io/).
-3. Conecte seu repositório.
-4. Configure as **secrets** no menu `Settings > Secrets`.
-5. Deploy!
-
----
-
-## 📊 Saída Esperada
-- **Score geral** de SEO/GEO.
-- **Tabela de achados**: página, prioridade, achado, status.
-- **Resumo Gemini**: pontos fortes, riscos, recomendações.
-- **Download JSON/CSV** com relatório.
-
----
-
-## 🔮 Roadmap Futuro
-- Suporte a múltiplos domínios simultâneos.
-- Cache de crawl.
-- Exportação para PDF.
-- Dashboard histórico.
-
----
-
-## 📝 Licença
-MIT
-```
-
----
-
-Agora o projeto está com **código, requirements e tutorial prontos** para GitHub/Streamlit Cloud. ✅
+            # Análise avançada com Gemini
+            st.subheader("🤖 Análise Avançada com Gemini")
+            gemini_report = gemini_analysis(full_report)
+            st.markdown(gemini_report)
