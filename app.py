@@ -46,7 +46,246 @@ else:
 
 PSI_API_KEY = os.getenv("PSI_API_KEY")
 
-# ========== NOVA FUNCIONALIDADE: ANÁLISE AVANÇADA DE CONTEÚDO ==========
+# ========== NOVA FUNCIONALIDADE: ANÁLISE DE SEO GEOGRÁFICO ==========
+def analyze_geo_seo(soup, url):
+    """Análise de SEO Geográfico para otimização local"""
+    geo_analysis = {
+        "local_business": {},
+        "geographic_content": {},
+        "location_signals": {},
+        "geo_score": 0
+    }
+    
+    text_content = soup.get_text().lower()
+    
+    # === ANÁLISE DE DADOS DE NEGÓCIO LOCAL ===
+    # Schema LocalBusiness
+    local_schemas = soup.find_all("script", type="application/ld+json")
+    has_local_business = False
+    
+    for script in local_schemas:
+        try:
+            data = json.loads(script.string.strip())
+            if isinstance(data, dict):
+                schema_type = data.get("@type", "")
+                if "LocalBusiness" in str(schema_type) or "Organization" in str(schema_type):
+                    has_local_business = True
+                    geo_analysis["local_business"]["schema_found"] = True
+                    geo_analysis["local_business"]["schema_type"] = schema_type
+                    
+                    # Verifica campos importantes
+                    geo_analysis["local_business"]["has_address"] = "address" in data
+                    geo_analysis["local_business"]["has_phone"] = "telephone" in data
+                    geo_analysis["local_business"]["has_hours"] = "openingHours" in data
+                    geo_analysis["local_business"]["has_geo"] = "geo" in data
+                    break
+        except:
+            continue
+    
+    if not has_local_business:
+        geo_analysis["local_business"]["schema_found"] = False
+    
+    # === ANÁLISE DE CONTEÚDO GEOGRÁFICO ===
+    # Cidades brasileiras mais importantes (amostra)
+    cidades_br = [
+        'são paulo', 'rio de janeiro', 'brasília', 'salvador', 'fortaleza',
+        'belo horizonte', 'manaus', 'curitiba', 'recife', 'goiânia',
+        'belém', 'porto alegre', 'guarulhos', 'campinas', 'nova iguaçu',
+        'maceió', 'campo grande', 'joão pessoa', 'teresina', 'natal'
+    ]
+    
+    estados_br = [
+        'acre', 'alagoas', 'amapá', 'amazonas', 'bahia', 'ceará',
+        'distrito federal', 'espírito santo', 'goiás', 'maranhão',
+        'mato grosso', 'mato grosso do sul', 'minas gerais', 'pará',
+        'paraíba', 'paraná', 'pernambuco', 'piauí', 'rio de janeiro',
+        'rio grande do norte', 'rio grande do sul', 'rondônia',
+        'roraima', 'santa catarina', 'são paulo', 'sergipe', 'tocantins'
+    ]
+    
+    # Conta menções geográficas
+    cidades_mencionadas = [cidade for cidade in cidades_br if cidade in text_content]
+    estados_mencionados = [estado for estado in estados_br if estado in text_content]
+    
+    geo_analysis["geographic_content"]["cities_mentioned"] = len(cidades_mencionadas)
+    geo_analysis["geographic_content"]["states_mentioned"] = len(estados_mencionados)
+    geo_analysis["geographic_content"]["cities_list"] = cidades_mencionadas[:5]  # Top 5
+    geo_analysis["geographic_content"]["states_list"] = estados_mencionados[:3]  # Top 3
+    
+    # Termos de localização
+    location_terms = [
+        'endereço', 'localização', 'onde fica', 'como chegar', 'próximo a',
+        'região', 'bairro', 'centro', 'zona', 'área', 'local', 'sede'
+    ]
+    
+    location_mentions = sum(1 for term in location_terms if term in text_content)
+    geo_analysis["geographic_content"]["location_terms"] = location_mentions
+    
+    # === ANÁLISE DE SINAIS DE LOCALIZAÇÃO ===
+    # Meta tags geográficas
+    geo_meta_tags = [
+        soup.find("meta", attrs={"name": "geo.region"}),
+        soup.find("meta", attrs={"name": "geo.placename"}),
+        soup.find("meta", attrs={"name": "geo.position"}),
+        soup.find("meta", attrs={"name": "ICBM"}),
+        soup.find("meta", attrs={"name": "DC.title"})
+    ]
+    
+    geo_analysis["location_signals"]["geo_meta_tags"] = len([tag for tag in geo_meta_tags if tag])
+    
+    # Title e H1 com localização
+    title = soup.find("title")
+    title_text = title.get_text().lower() if title else ""
+    
+    h1s = soup.find_all("h1")
+    h1_text = " ".join([h1.get_text().lower() for h1 in h1s])
+    
+    geo_analysis["location_signals"]["title_has_location"] = any(cidade in title_text for cidade in cidades_br[:10])
+    geo_analysis["location_signals"]["h1_has_location"] = any(cidade in h1_text for cidade in cidades_br[:10])
+    
+    # Links para mapas
+    map_links = soup.find_all("a", href=True)
+    google_maps_links = [link for link in map_links if "maps.google" in link.get('href', '').lower() or "goo.gl/maps" in link.get('href', '').lower()]
+    geo_analysis["location_signals"]["google_maps_links"] = len(google_maps_links)
+    
+    # === CÁLCULO DO SCORE GEOGRÁFICO ===
+    score = 0
+    
+    # Schema LocalBusiness (30 pontos)
+    if geo_analysis["local_business"].get("schema_found"):
+        score += 10
+        if geo_analysis["local_business"].get("has_address"): score += 5
+        if geo_analysis["local_business"].get("has_phone"): score += 5
+        if geo_analysis["local_business"].get("has_hours"): score += 5
+        if geo_analysis["local_business"].get("has_geo"): score += 5
+    
+    # Conteúdo geográfico (25 pontos)
+    if geo_analysis["geographic_content"]["cities_mentioned"] > 0:
+        score += min(geo_analysis["geographic_content"]["cities_mentioned"] * 3, 15)
+    
+    if geo_analysis["geographic_content"]["location_terms"] > 0:
+        score += min(geo_analysis["geographic_content"]["location_terms"] * 2, 10)
+    
+    # Sinais de localização (25 pontos)
+    if geo_analysis["location_signals"]["title_has_location"]: score += 10
+    if geo_analysis["location_signals"]["h1_has_location"]: score += 8
+    if geo_analysis["location_signals"]["geo_meta_tags"] > 0: score += 5
+    if geo_analysis["location_signals"]["google_maps_links"] > 0: score += 2
+    
+    # Bonus por consistência (20 pontos)
+    if (geo_analysis["geographic_content"]["cities_mentioned"] > 0 and 
+        geo_analysis["location_signals"]["title_has_location"] and
+        geo_analysis["local_business"].get("schema_found")):
+        score += 20
+    
+    geo_analysis["geo_score"] = min(score, 100)
+    
+    return geo_analysis
+
+def create_geo_seo_dashboard(geo_analysis):
+    """Cria dashboard visual para análise de SEO Geográfico"""
+    if not geo_analysis:
+        return None
+    
+    from plotly.subplots import make_subplots
+    
+    fig = make_subplots(
+        rows=2, cols=2,
+        subplot_titles=('Score GEO', 'Sinais de Localização', 'Conteúdo Geográfico', 'Schema LocalBusiness'),
+        specs=[[{"type": "indicator"}, {"type": "bar"}],
+               [{"type": "bar"}, {"type": "indicator"}]]
+    )
+    
+    # Gauge do score GEO
+    geo_score = geo_analysis.get('geo_score', 0)
+    if geo_score == 0:
+        return None
+    
+    color = "#2F4F4F" if geo_score >= 70 else "#708090" if geo_score >= 50 else "#A9A9A9"
+    
+    fig.add_trace(go.Indicator(
+        mode="gauge+number",
+        value=geo_score,
+        title={'text': "Score GEO", 'font': {'color': '#2F4F4F'}},
+        gauge={'axis': {'range': [None, 100], 'tickcolor': '#696969'},
+               'bar': {'color': color},
+               'bgcolor': "white",
+               'borderwidth': 2,
+               'bordercolor': "#D3D3D3",
+               'steps': [{'range': [0, 50], 'color': "#F5F5F5"},
+                        {'range': [50, 70], 'color': "#E8E8E8"},
+                        {'range': [70, 100], 'color': "#DCDCDC"}]}
+    ), row=1, col=1)
+    
+    # Sinais de localização
+    location_signals = geo_analysis.get('location_signals', {})
+    signal_labels = ['Title', 'H1', 'Meta Tags', 'Maps Links']
+    signal_values = [
+        1 if location_signals.get('title_has_location') else 0,
+        1 if location_signals.get('h1_has_location') else 0,
+        location_signals.get('geo_meta_tags', 0),
+        min(location_signals.get('google_maps_links', 0), 3)  # Máximo 3 para visualização
+    ]
+    
+    fig.add_trace(go.Bar(
+        x=signal_labels,
+        y=signal_values,
+        name="Sinais",
+        marker_color=['#2F4F4F', '#708090', '#A9A9A9', '#C0C0C0'],
+        showlegend=False
+    ), row=1, col=2)
+    
+    # Conteúdo geográfico
+    geo_content = geo_analysis.get('geographic_content', {})
+    content_labels = ['Cidades', 'Estados', 'Termos Local']
+    content_values = [
+        geo_content.get('cities_mentioned', 0),
+        geo_content.get('states_mentioned', 0),
+        geo_content.get('location_terms', 0)
+    ]
+    
+    fig.add_trace(go.Bar(
+        x=content_labels,
+        y=content_values,
+        name="Conteúdo",
+        marker_color=['#2F4F4F', '#708090', '#A9A9A9'],
+        showlegend=False
+    ), row=2, col=1)
+    
+    # LocalBusiness Schema
+    local_business = geo_analysis.get('local_business', {})
+    if local_business.get('schema_found'):
+        schema_score = 25  # Base
+        if local_business.get('has_address'): schema_score += 25
+        if local_business.get('has_phone'): schema_score += 25
+        if local_business.get('has_hours'): schema_score += 25
+    else:
+        schema_score = 0
+    
+    schema_color = "#2F4F4F" if schema_score >= 75 else "#708090" if schema_score >= 50 else "#A9A9A9"
+    
+    fig.add_trace(go.Indicator(
+        mode="gauge+number",
+        value=schema_score,
+        title={'text': "Schema Score", 'font': {'color': '#2F4F4F'}},
+        gauge={'axis': {'range': [None, 100], 'tickcolor': '#696969'},
+               'bar': {'color': schema_color},
+               'bgcolor': "white",
+               'borderwidth': 2,
+               'bordercolor': "#D3D3D3"}
+    ), row=2, col=2)
+    
+    fig.update_layout(
+        height=500,
+        showlegend=False,
+        title_text="Dashboard de SEO Geográfico",
+        title_x=0.5,
+        title_font_color='#2F4F4F',
+        plot_bgcolor='white',
+        paper_bgcolor='white'
+    )
+    
+    return fig
 def analyze_content_advanced(soup, url):
     """Análise avançada de conteúdo com métricas de legibilidade e estrutura"""
     analysis = {
@@ -742,8 +981,8 @@ def create_sitemap_visualization(site_structure):
             mode='markers+text',
             marker=dict(
                 size=45,
-                color=color,
-                line=dict(width=2, color='white'),
+                color='white',  # Fundo branco
+                line=dict(width=3, color=color),  # Borda colorida
                 symbol='circle'
             ),
             text=clean_texts,
@@ -943,18 +1182,18 @@ def show_tool_info():
     """Exibe informações sobre a ferramenta apenas na página inicial"""
     if 'analysis_started' not in st.session_state:
         st.markdown("""
-        ### 📚 Sobre o SEO AI Strategist Pro
+        ### 📚 Sobre a Auditoria de SEO e GEO On-Page
 
-        **Análise completa de SEO** com inteligência artificial para otimização profissional.
+        **Análise completa de SEO e otimização geográfica** com inteligência artificial.
 
         **Funcionalidades principais:**
-        - ✅ Performance e Core Web Vitals (Google PageSpeed)
-        - ✅ Análise on-page completa
-        - ✅ Análise avançada de conteúdo e legibilidade
-        - ✅ Mapeamento de estrutura do site
-        - ✅ Dados estruturados (Schema.org)
-        - ✅ Comparação competitiva
-        - ✅ Score geral de SEO
+        - ✅ **SEO Técnico:** Performance e Core Web Vitals (Google PageSpeed)
+        - ✅ **SEO On-Page:** Análise completa de elementos internos
+        - ✅ **SEO Geográfico:** Otimização para buscas locais e regionais
+        - ✅ **Análise de Conteúdo:** Legibilidade e qualidade textual
+        - ✅ **Estrutura do Site:** Mapeamento e arquitetura de informação
+        - ✅ **Dados Estruturados:** Schema.org e rich snippets
+        - ✅ **Comparação Competitiva:** Benchmarking com concorrentes
 
         **Tecnologias:** Python, Streamlit, Google Gemini AI, PageSpeed Insights API
 
@@ -974,6 +1213,9 @@ with st.sidebar:
     content_analysis_enabled = st.checkbox("📝 Análise avançada de conteúdo", value=True,
                                           help="Análise de legibilidade, estrutura e qualidade do conteúdo")
     
+    geo_seo_enabled = st.checkbox("🌍 Análise de SEO Geográfico", value=True,
+                                 help="Análise de otimização para buscas locais e regionais")
+    
     max_pages_sitemap = st.slider("Máx. páginas para sitemap", 10, 50, 20,
                                  help="Limite de páginas para análise de estrutura")
     
@@ -986,10 +1228,11 @@ with st.sidebar:
     **Conteúdo:** Mínimo 300 palavras  
     **Performance:** Acima de 80  
     **Legibilidade:** Score Flesch > 60
+    **SEO Geográfico:** Menções locais e Schema LocalBusiness
     """)
 
-st.title("🔭 SEO AI Strategist Pro")
-st.markdown("Análise profissional de SEO com IA e insights estratégicos.")
+st.title("🔭 Auditoria de SEO e GEO On-Page")
+st.markdown("Análise completa de SEO e otimização geográfica com IA e insights estratégicos.")
 
 # Mostra informações apenas se análise não foi iniciada
 show_tool_info()
@@ -1038,6 +1281,7 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
                 structured_data = {}
                 site_structure = {}
                 content_analysis = {}
+                geo_analysis = {}
                 
                 if deep_analysis:
                     structured_data = analyze_structured_data(soup_principal)
@@ -1049,6 +1293,10 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
                 if content_analysis_enabled:
                     with st.spinner("📝 Analisando qualidade do conteúdo..."):
                         content_analysis = analyze_content_advanced(soup_principal, url_principal)
+                
+                if geo_seo_enabled:
+                    with st.spinner("🌍 Analisando SEO Geográfico..."):
+                        geo_analysis = analyze_geo_seo(soup_principal, url_principal)
                 
                 psi_principal = get_pagespeed_insights(url_principal)
                 broken_links_principal = check_broken_links(url_principal, links_principais)
@@ -1142,6 +1390,125 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
                 if content_insights:
                     with st.expander("💡 Insights de Conteúdo"):
                         for insight in content_insights:
+                            st.markdown(f"- {insight}")
+                
+                # Tabela detalhada de análise de conteúdo
+                if quality_score > 0:
+                    with st.expander("📋 Tabela Detalhada de Análise de Conteúdo"):
+                        semantic_data = content_analysis.get('semantic_analysis', {})
+                        top_words = semantic_data.get('top_keywords', {})
+                        
+                        if top_words:
+                            # Cria DataFrame com top palavras
+                            df_words = pd.DataFrame([
+                                {"Palavra": palavra, "Frequência": freq} 
+                                for palavra, freq in list(top_words.items())[:10]
+                            ])
+                            df_words.index = range(len(df_words))  # Reseta índice
+                            
+                            col1, col2 = st.columns(2)
+                            
+                            with col1:
+                                st.markdown("**🔑 Top 10 Palavras-chave:**")
+                                st.dataframe(df_words, use_container_width=True, hide_index=False)
+                            
+                            with col2:
+                                # Métricas adicionais
+                                vocab_richness = semantic_data.get('vocabulary_richness', 0)
+                                st.metric("📊 Riqueza Vocabular", f"{vocab_richness:.2%}")
+                                
+                                duplication = quality_data.get('duplication_ratio', 0)
+                                st.metric("📄 Taxa de Duplicação", f"{duplication:.1f}%")
+                                
+                                avg_sentence = readability_data.get('avg_sentence_length', 0)
+                                st.metric("📏 Palavras por Frase", f"{avg_sentence:.1f}")
+                
+                st.divider()
+        
+        # === SEÇÃO DE ANÁLISE GEO ===
+        if geo_seo_enabled and geo_analysis:
+            geo_score = geo_analysis.get('geo_score', 0)
+            
+            if geo_score > 0:
+                st.markdown("#### 🌍 Análise de SEO Geográfico")
+                
+                # Dashboard GEO
+                geo_dashboard = create_geo_seo_dashboard(geo_analysis)
+                if geo_dashboard:
+                    st.plotly_chart(geo_dashboard, use_container_width=True)
+                
+                # Métricas GEO
+                col1, col2, col3, col4 = st.columns(4)
+                
+                local_business = geo_analysis.get('local_business', {})
+                geo_content = geo_analysis.get('geographic_content', {})
+                location_signals = geo_analysis.get('location_signals', {})
+                
+                with col1:
+                    st.metric("🎯 Score GEO", f"{geo_score}/100")
+                    schema_found = "✅" if local_business.get('schema_found') else "❌"
+                    st.metric("🏢 Schema LocalBusiness", schema_found)
+                
+                with col2:
+                    cities_count = geo_content.get('cities_mentioned', 0)
+                    st.metric("🏙️ Cidades Mencionadas", cities_count)
+                    
+                    location_terms = geo_content.get('location_terms', 0)
+                    st.metric("📍 Termos de Localização", location_terms)
+                
+                with col3:
+                    title_geo = "✅" if location_signals.get('title_has_location') else "❌"
+                    st.metric("📰 Title com Localização", title_geo)
+                    
+                    h1_geo = "✅" if location_signals.get('h1_has_location') else "❌"
+                    st.metric("🏷️ H1 com Localização", h1_geo)
+                
+                with col4:
+                    geo_meta = location_signals.get('geo_meta_tags', 0)
+                    st.metric("🏷️ Meta Tags GEO", geo_meta)
+                    
+                    maps_links = location_signals.get('google_maps_links', 0)
+                    st.metric("🗺️ Links para Mapas", maps_links)
+                
+                # Insights GEO
+                geo_insights = []
+                
+                if geo_score >= 80:
+                    geo_insights.append("🏆 **Excelente otimização geográfica!**")
+                elif geo_score >= 60:
+                    geo_insights.append("👍 **Boa presença local, pode melhorar**")
+                else:
+                    geo_insights.append("⚠️ **SEO Geográfico precisa de atenção**")
+                
+                if not local_business.get('schema_found'):
+                    geo_insights.append("🏢 **Adicione Schema LocalBusiness** - Melhora visibilidade local")
+                
+                if cities_count == 0:
+                    geo_insights.append("🏙️ **Mencione cidades-alvo** - Importante para SEO local")
+                
+                if not location_signals.get('title_has_location'):
+                    geo_insights.append("📰 **Inclua localização no title** - Fundamental para buscas locais")
+                
+                # Exibe cidades e estados encontrados
+                if geo_content.get('cities_list') or geo_content.get('states_list'):
+                    with st.expander("🗺️ Localizações Detectadas"):
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            if geo_content.get('cities_list'):
+                                st.markdown("**Cidades:**")
+                                for cidade in geo_content['cities_list']:
+                                    st.write(f"• {cidade.title()}")
+                        
+                        with col2:
+                            if geo_content.get('states_list'):
+                                st.markdown("**Estados:**")
+                                for estado in geo_content['states_list']:
+                                    st.write(f"• {estado.title()}")
+                
+                if geo_insights:
+                    with st.expander("💡 Insights de SEO Geográfico"):
+                        for insight in geo_insights:
                             st.markdown(f"- {insight}")
                 
                 st.divider()
@@ -1569,7 +1936,7 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #696969; font-size: 0.8em;'>
-<b>SEO AI Strategist Pro v2.1</b> | Análise profissional de SEO
+<b>Auditoria de SEO e GEO On-Page v2.2</b> | Análise completa de SEO técnico e geográfico
 </div>
 """, unsafe_allow_html=True)
 
