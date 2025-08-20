@@ -1,4 +1,5 @@
-import streamlit as st
+geo_seo_enabled = st.checkbox("🤖 Análise de GEO (Generative Engine Optimization)", value=True,
+                                 help="Otimização para IAs generativas como ChatGPT, Gemini, Claude")import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 import google.generativeai as genai
@@ -46,144 +47,206 @@ else:
 
 PSI_API_KEY = os.getenv("PSI_API_KEY")
 
-# ========== NOVA FUNCIONALIDADE: ANÁLISE DE SEO GEOGRÁFICO ==========
-def analyze_geo_seo(soup, url):
-    """Análise de SEO Geográfico para otimização local"""
+# ========== NOVA FUNCIONALIDADE: ANÁLISE DE GEO (GENERATIVE ENGINE OPTIMIZATION) ==========
+def analyze_geo_ai_optimization(soup, url):
+    """Análise de GEO - Generative Engine Optimization para IAs"""
     geo_analysis = {
-        "local_business": {},
-        "geographic_content": {},
-        "location_signals": {},
+        "content_structure": {},
+        "factual_content": {},
+        "ai_friendly_format": {},
+        "authority_signals": {},
         "geo_score": 0
     }
     
-    text_content = soup.get_text().lower()
+    text_content = soup.get_text()
+    text_lower = text_content.lower()
     
-    # === ANÁLISE DE DADOS DE NEGÓCIO LOCAL ===
-    # Schema LocalBusiness
-    local_schemas = soup.find_all("script", type="application/ld+json")
-    has_local_business = False
+    # === ANÁLISE DE ESTRUTURA DE CONTEÚDO PARA IAs ===
+    # Perguntas e respostas (formato FAQ)
+    faq_indicators = [
+        'o que é', 'como fazer', 'por que', 'quando', 'onde', 'quem',
+        'qual a diferença', 'como funciona', 'qual o melhor', 'pergunta',
+        'resposta', 'dúvida', 'questão'
+    ]
     
-    for script in local_schemas:
+    faq_mentions = sum(1 for indicator in faq_indicators if indicator in text_lower)
+    geo_analysis["content_structure"]["faq_indicators"] = faq_mentions
+    
+    # Listas e estruturas organizadas
+    lists = soup.find_all(['ul', 'ol'])
+    geo_analysis["content_structure"]["lists_count"] = len(lists)
+    
+    # Tabelas (dados estruturados)
+    tables = soup.find_all('table')
+    geo_analysis["content_structure"]["tables_count"] = len(tables)
+    
+    # Headings bem estruturados
+    headings = soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+    geo_analysis["content_structure"]["headings_count"] = len(headings)
+    
+    # Verifica hierarquia lógica de headings
+    h_levels = [int(h.name[1]) for h in headings]
+    hierarchy_score = 0
+    if h_levels:
+        # Pontos por ordem lógica (H1 -> H2 -> H3...)
+        for i in range(len(h_levels) - 1):
+            if h_levels[i+1] <= h_levels[i] + 1:  # Não pula níveis
+                hierarchy_score += 1
+        hierarchy_score = (hierarchy_score / max(len(h_levels) - 1, 1)) * 100
+    
+    geo_analysis["content_structure"]["hierarchy_score"] = round(hierarchy_score, 1)
+    
+    # === ANÁLISE DE CONTEÚDO FACTUAL ===
+    # Indicadores de conteúdo factual e autoritativo
+    factual_indicators = [
+        'segundo', 'de acordo com', 'estudos mostram', 'pesquisa indica',
+        'dados revelam', 'estatística', 'porcentagem', '%', 'número',
+        'ano', 'em 2023', 'em 2024', 'recente', 'atual'
+    ]
+    
+    factual_mentions = sum(1 for indicator in factual_indicators if indicator in text_lower)
+    geo_analysis["factual_content"]["factual_indicators"] = factual_mentions
+    
+    # Citations e referências
+    citations = soup.find_all('cite') + soup.find_all('blockquote')
+    geo_analysis["factual_content"]["citations"] = len(citations)
+    
+    # Links externos para fontes autoritárias
+    external_links = soup.find_all('a', href=True)
+    authoritative_domains = [
+        'wikipedia.org', 'edu.br', 'gov.br', 'ibge.gov.br',
+        'nature.com', 'pubmed.gov', 'scholar.google',
+        'researchgate.net', 'scielo.org'
+    ]
+    
+    authoritative_links = 0
+    for link in external_links:
+        href = link.get('href', '').lower()
+        if any(domain in href for domain in authoritative_domains):
+            authoritative_links += 1
+    
+    geo_analysis["factual_content"]["authoritative_links"] = authoritative_links
+    
+    # === ANÁLISE DE FORMATO AMIGÁVEL PARA IA ===
+    # Definições claras (importante para IAs)
+    definition_patterns = [
+        r'\b\w+\s+é\s+', r'\b\w+\s+são\s+', r'definição\s+de',
+        r'significa', r'conceito\s+de', r'refere-se\s+a'
+    ]
+    
+    definition_count = 0
+    for pattern in definition_patterns:
+        definition_count += len(re.findall(pattern, text_lower))
+    
+    geo_analysis["ai_friendly_format"]["definitions"] = definition_count
+    
+    # Exemplos práticos
+    example_indicators = [
+        'por exemplo', 'exemplo', 'como:', 'veja:', 'observe:',
+        'considere', 'imagine', 'suponha', 'caso'
+    ]
+    
+    example_mentions = sum(1 for indicator in example_indicators if indicator in text_lower)
+    geo_analysis["ai_friendly_format"]["examples"] = example_mentions
+    
+    # Comparações (úteis para IAs entenderem contexto)
+    comparison_indicators = [
+        'diferença entre', 'comparado com', 'versus', 'vs',
+        'melhor que', 'pior que', 'similar a', 'ao contrário'
+    ]
+    
+    comparison_mentions = sum(1 for indicator in comparison_indicators if indicator in text_lower)
+    geo_analysis["ai_friendly_format"]["comparisons"] = comparison_mentions
+    
+    # Instruções passo a passo
+    step_indicators = [
+        'passo', 'etapa', 'primeiro', 'segundo', 'terceiro',
+        'em seguida', 'depois', 'finalmente', 'para começar'
+    ]
+    
+    step_mentions = sum(1 for indicator in step_indicators if indicator in text_lower)
+    geo_analysis["ai_friendly_format"]["step_by_step"] = step_mentions
+    
+    # === ANÁLISE DE SINAIS DE AUTORIDADE ===
+    # Dados do autor
+    author_tags = soup.find_all(['meta'], attrs={'name': ['author', 'article:author']})
+    author_elements = soup.find_all(['span', 'div', 'p'], class_=lambda x: x and 'author' in x.lower() if x else False)
+    
+    geo_analysis["authority_signals"]["author_mentioned"] = len(author_tags) + len(author_elements) > 0
+    
+    # Data de publicação/atualização
+    date_tags = soup.find_all(['meta'], attrs={'name': ['publish_date', 'article:published_time', 'article:modified_time']})
+    time_elements = soup.find_all(['time'])
+    
+    geo_analysis["authority_signals"]["date_mentioned"] = len(date_tags) + len(time_elements) > 0
+    
+    # Schema Article
+    has_article_schema = False
+    json_scripts = soup.find_all("script", type="application/ld+json")
+    for script in json_scripts:
         try:
             data = json.loads(script.string.strip())
-            if isinstance(data, dict):
-                schema_type = data.get("@type", "")
-                if "LocalBusiness" in str(schema_type) or "Organization" in str(schema_type):
-                    has_local_business = True
-                    geo_analysis["local_business"]["schema_found"] = True
-                    geo_analysis["local_business"]["schema_type"] = schema_type
-                    
-                    # Verifica campos importantes
-                    geo_analysis["local_business"]["has_address"] = "address" in data
-                    geo_analysis["local_business"]["has_phone"] = "telephone" in data
-                    geo_analysis["local_business"]["has_hours"] = "openingHours" in data
-                    geo_analysis["local_business"]["has_geo"] = "geo" in data
-                    break
+            if isinstance(data, dict) and 'Article' in str(data.get('@type', '')):
+                has_article_schema = True
+                break
         except:
             continue
     
-    if not has_local_business:
-        geo_analysis["local_business"]["schema_found"] = False
+    geo_analysis["authority_signals"]["article_schema"] = has_article_schema
     
-    # === ANÁLISE DE CONTEÚDO GEOGRÁFICO ===
-    # Cidades brasileiras mais importantes (amostra)
-    cidades_br = [
-        'são paulo', 'rio de janeiro', 'brasília', 'salvador', 'fortaleza',
-        'belo horizonte', 'manaus', 'curitiba', 'recife', 'goiânia',
-        'belém', 'porto alegre', 'guarulhos', 'campinas', 'nova iguaçu',
-        'maceió', 'campo grande', 'joão pessoa', 'teresina', 'natal'
-    ]
+    # Comprimento do conteúdo (IAs preferem conteúdo substancial)
+    word_count = len(text_content.split())
+    geo_analysis["authority_signals"]["word_count"] = word_count
     
-    estados_br = [
-        'acre', 'alagoas', 'amapá', 'amazonas', 'bahia', 'ceará',
-        'distrito federal', 'espírito santo', 'goiás', 'maranhão',
-        'mato grosso', 'mato grosso do sul', 'minas gerais', 'pará',
-        'paraíba', 'paraná', 'pernambuco', 'piauí', 'rio de janeiro',
-        'rio grande do norte', 'rio grande do sul', 'rondônia',
-        'roraima', 'santa catarina', 'são paulo', 'sergipe', 'tocantins'
-    ]
-    
-    # Conta menções geográficas
-    cidades_mencionadas = [cidade for cidade in cidades_br if cidade in text_content]
-    estados_mencionados = [estado for estado in estados_br if estado in text_content]
-    
-    geo_analysis["geographic_content"]["cities_mentioned"] = len(cidades_mencionadas)
-    geo_analysis["geographic_content"]["states_mentioned"] = len(estados_mencionados)
-    geo_analysis["geographic_content"]["cities_list"] = cidades_mencionadas[:5]  # Top 5
-    geo_analysis["geographic_content"]["states_list"] = estados_mencionados[:3]  # Top 3
-    
-    # Termos de localização
-    location_terms = [
-        'endereço', 'localização', 'onde fica', 'como chegar', 'próximo a',
-        'região', 'bairro', 'centro', 'zona', 'área', 'local', 'sede'
-    ]
-    
-    location_mentions = sum(1 for term in location_terms if term in text_content)
-    geo_analysis["geographic_content"]["location_terms"] = location_mentions
-    
-    # === ANÁLISE DE SINAIS DE LOCALIZAÇÃO ===
-    # Meta tags geográficas
-    geo_meta_tags = [
-        soup.find("meta", attrs={"name": "geo.region"}),
-        soup.find("meta", attrs={"name": "geo.placename"}),
-        soup.find("meta", attrs={"name": "geo.position"}),
-        soup.find("meta", attrs={"name": "ICBM"}),
-        soup.find("meta", attrs={"name": "DC.title"})
-    ]
-    
-    geo_analysis["location_signals"]["geo_meta_tags"] = len([tag for tag in geo_meta_tags if tag])
-    
-    # Title e H1 com localização
-    title = soup.find("title")
-    title_text = title.get_text().lower() if title else ""
-    
-    h1s = soup.find_all("h1")
-    h1_text = " ".join([h1.get_text().lower() for h1 in h1s])
-    
-    geo_analysis["location_signals"]["title_has_location"] = any(cidade in title_text for cidade in cidades_br[:10])
-    geo_analysis["location_signals"]["h1_has_location"] = any(cidade in h1_text for cidade in cidades_br[:10])
-    
-    # Links para mapas
-    map_links = soup.find_all("a", href=True)
-    google_maps_links = [link for link in map_links if "maps.google" in link.get('href', '').lower() or "goo.gl/maps" in link.get('href', '').lower()]
-    geo_analysis["location_signals"]["google_maps_links"] = len(google_maps_links)
-    
-    # === CÁLCULO DO SCORE GEOGRÁFICO ===
+    # === CÁLCULO DO SCORE GEO ===
     score = 0
     
-    # Schema LocalBusiness (30 pontos)
-    if geo_analysis["local_business"].get("schema_found"):
-        score += 10
-        if geo_analysis["local_business"].get("has_address"): score += 5
-        if geo_analysis["local_business"].get("has_phone"): score += 5
-        if geo_analysis["local_business"].get("has_hours"): score += 5
-        if geo_analysis["local_business"].get("has_geo"): score += 5
+    # Estrutura de conteúdo (25 pontos)
+    if faq_mentions >= 3: score += 8
+    elif faq_mentions >= 1: score += 5
     
-    # Conteúdo geográfico (25 pontos)
-    if geo_analysis["geographic_content"]["cities_mentioned"] > 0:
-        score += min(geo_analysis["geographic_content"]["cities_mentioned"] * 3, 15)
+    if len(lists) >= 2: score += 5
+    elif len(lists) >= 1: score += 3
     
-    if geo_analysis["geographic_content"]["location_terms"] > 0:
-        score += min(geo_analysis["geographic_content"]["location_terms"] * 2, 10)
+    if len(headings) >= 3: score += 7
+    elif len(headings) >= 1: score += 4
     
-    # Sinais de localização (25 pontos)
-    if geo_analysis["location_signals"]["title_has_location"]: score += 10
-    if geo_analysis["location_signals"]["h1_has_location"]: score += 8
-    if geo_analysis["location_signals"]["geo_meta_tags"] > 0: score += 5
-    if geo_analysis["location_signals"]["google_maps_links"] > 0: score += 2
+    if hierarchy_score >= 80: score += 5
+    elif hierarchy_score >= 50: score += 3
     
-    # Bonus por consistência (20 pontos)
-    if (geo_analysis["geographic_content"]["cities_mentioned"] > 0 and 
-        geo_analysis["location_signals"]["title_has_location"] and
-        geo_analysis["local_business"].get("schema_found")):
-        score += 20
+    # Conteúdo factual (25 pontos)
+    if factual_mentions >= 5: score += 10
+    elif factual_mentions >= 2: score += 6
+    
+    if authoritative_links >= 2: score += 10
+    elif authoritative_links >= 1: score += 6
+    
+    if len(citations) >= 1: score += 5
+    
+    # Formato amigável para IA (25 pontos)
+    if definition_count >= 3: score += 8
+    elif definition_count >= 1: score += 5
+    
+    if example_mentions >= 2: score += 6
+    elif example_mentions >= 1: score += 3
+    
+    if comparison_mentions >= 1: score += 6
+    if step_mentions >= 2: score += 5
+    
+    # Sinais de autoridade (25 pontos)
+    if geo_analysis["authority_signals"]["author_mentioned"]: score += 6
+    if geo_analysis["authority_signals"]["date_mentioned"]: score += 6
+    if has_article_schema: score += 8
+    
+    if word_count >= 1000: score += 5
+    elif word_count >= 500: score += 3
     
     geo_analysis["geo_score"] = min(score, 100)
     
     return geo_analysis
 
-def create_geo_seo_dashboard(geo_analysis):
-    """Cria dashboard visual para análise de SEO Geográfico"""
+def create_geo_ai_dashboard(geo_analysis):
+    """Cria dashboard visual para análise de GEO (IA)"""
     if not geo_analysis:
         return None
     
@@ -191,9 +254,9 @@ def create_geo_seo_dashboard(geo_analysis):
     
     fig = make_subplots(
         rows=2, cols=2,
-        subplot_titles=('Score GEO', 'Sinais de Localização', 'Conteúdo Geográfico', 'Schema LocalBusiness'),
+        subplot_titles=('Score GEO (IA)', 'Estrutura para IA', 'Conteúdo Factual', 'Sinais de Autoridade'),
         specs=[[{"type": "indicator"}, {"type": "bar"}],
-               [{"type": "bar"}, {"type": "indicator"}]]
+               [{"type": "bar"}, {"type": "bar"}]]
     )
     
     # Gauge do score GEO
@@ -206,7 +269,7 @@ def create_geo_seo_dashboard(geo_analysis):
     fig.add_trace(go.Indicator(
         mode="gauge+number",
         value=geo_score,
-        title={'text': "Score GEO", 'font': {'color': '#2F4F4F'}},
+        title={'text': "Score GEO (IA)", 'font': {'color': '#2F4F4F'}},
         gauge={'axis': {'range': [None, 100], 'tickcolor': '#696969'},
                'bar': {'color': color},
                'bgcolor': "white",
@@ -217,68 +280,65 @@ def create_geo_seo_dashboard(geo_analysis):
                         {'range': [70, 100], 'color': "#DCDCDC"}]}
     ), row=1, col=1)
     
-    # Sinais de localização
-    location_signals = geo_analysis.get('location_signals', {})
-    signal_labels = ['Title', 'H1', 'Meta Tags', 'Maps Links']
-    signal_values = [
-        1 if location_signals.get('title_has_location') else 0,
-        1 if location_signals.get('h1_has_location') else 0,
-        location_signals.get('geo_meta_tags', 0),
-        min(location_signals.get('google_maps_links', 0), 3)  # Máximo 3 para visualização
+    # Estrutura para IA
+    content_structure = geo_analysis.get('content_structure', {})
+    structure_labels = ['FAQ', 'Listas', 'Tabelas', 'Headings']
+    structure_values = [
+        content_structure.get('faq_indicators', 0),
+        content_structure.get('lists_count', 0),
+        content_structure.get('tables_count', 0),
+        min(content_structure.get('headings_count', 0), 10)  # Máximo 10 para visualização
     ]
     
     fig.add_trace(go.Bar(
-        x=signal_labels,
-        y=signal_values,
-        name="Sinais",
+        x=structure_labels,
+        y=structure_values,
+        name="Estrutura",
         marker_color=['#2F4F4F', '#708090', '#A9A9A9', '#C0C0C0'],
         showlegend=False
     ), row=1, col=2)
     
-    # Conteúdo geográfico
-    geo_content = geo_analysis.get('geographic_content', {})
-    content_labels = ['Cidades', 'Estados', 'Termos Local']
-    content_values = [
-        geo_content.get('cities_mentioned', 0),
-        geo_content.get('states_mentioned', 0),
-        geo_content.get('location_terms', 0)
+    # Conteúdo factual
+    factual_content = geo_analysis.get('factual_content', {})
+    factual_labels = ['Indicadores', 'Citações', 'Links Autoritários']
+    factual_values = [
+        factual_content.get('factual_indicators', 0),
+        factual_content.get('citations', 0),
+        factual_content.get('authoritative_links', 0)
     ]
     
     fig.add_trace(go.Bar(
-        x=content_labels,
-        y=content_values,
-        name="Conteúdo",
+        x=factual_labels,
+        y=factual_values,
+        name="Factual",
         marker_color=['#2F4F4F', '#708090', '#A9A9A9'],
         showlegend=False
     ), row=2, col=1)
     
-    # LocalBusiness Schema
-    local_business = geo_analysis.get('local_business', {})
-    if local_business.get('schema_found'):
-        schema_score = 25  # Base
-        if local_business.get('has_address'): schema_score += 25
-        if local_business.get('has_phone'): schema_score += 25
-        if local_business.get('has_hours'): schema_score += 25
-    else:
-        schema_score = 0
+    # Sinais de autoridade
+    authority_signals = geo_analysis.get('authority_signals', {})
+    ai_format = geo_analysis.get('ai_friendly_format', {})
     
-    schema_color = "#2F4F4F" if schema_score >= 75 else "#708090" if schema_score >= 50 else "#A9A9A9"
+    authority_labels = ['Definições', 'Exemplos', 'Comparações', 'Passos']
+    authority_values = [
+        ai_format.get('definitions', 0),
+        ai_format.get('examples', 0),
+        ai_format.get('comparisons', 0),
+        ai_format.get('step_by_step', 0)
+    ]
     
-    fig.add_trace(go.Indicator(
-        mode="gauge+number",
-        value=schema_score,
-        title={'text': "Schema Score", 'font': {'color': '#2F4F4F'}},
-        gauge={'axis': {'range': [None, 100], 'tickcolor': '#696969'},
-               'bar': {'color': schema_color},
-               'bgcolor': "white",
-               'borderwidth': 2,
-               'bordercolor': "#D3D3D3"}
+    fig.add_trace(go.Bar(
+        x=authority_labels,
+        y=authority_values,
+        name="IA Format",
+        marker_color=['#2F4F4F', '#708090', '#A9A9A9', '#C0C0C0'],
+        showlegend=False
     ), row=2, col=2)
     
     fig.update_layout(
         height=500,
         showlegend=False,
-        title_text="Dashboard de SEO Geográfico",
+        title_text="Dashboard de GEO - Generative Engine Optimization",
         title_x=0.5,
         title_font_color='#2F4F4F',
         plot_bgcolor='white',
@@ -1184,12 +1244,12 @@ def show_tool_info():
         st.markdown("""
         ### 📚 Sobre a Auditoria de SEO e GEO On-Page
 
-        **Análise completa de SEO e otimização geográfica** com inteligência artificial.
+        **Análise completa de SEO tradicional e GEO (Generative Engine Optimization)** com inteligência artificial.
 
         **Funcionalidades principais:**
         - ✅ **SEO Técnico:** Performance e Core Web Vitals (Google PageSpeed)
         - ✅ **SEO On-Page:** Análise completa de elementos internos
-        - ✅ **SEO Geográfico:** Otimização para buscas locais e regionais
+        - ✅ **GEO (Generative Engine Optimization):** Otimização para IAs como ChatGPT, Gemini, Claude
         - ✅ **Análise de Conteúdo:** Legibilidade e qualidade textual
         - ✅ **Estrutura do Site:** Mapeamento e arquitetura de informação
         - ✅ **Dados Estruturados:** Schema.org e rich snippets
@@ -1213,8 +1273,8 @@ with st.sidebar:
     content_analysis_enabled = st.checkbox("📝 Análise avançada de conteúdo", value=True,
                                           help="Análise de legibilidade, estrutura e qualidade do conteúdo")
     
-    geo_seo_enabled = st.checkbox("🌍 Análise de SEO Geográfico", value=True,
-                                 help="Análise de otimização para buscas locais e regionais")
+    geo_seo_enabled = st.checkbox("🤖 Análise de GEO (Generative Engine Optimization)", value=True,
+                                 help="Otimização para IAs generativas como ChatGPT, Gemini, Claude")
     
     max_pages_sitemap = st.slider("Máx. páginas para sitemap", 10, 50, 20,
                                  help="Limite de páginas para análise de estrutura")
@@ -1227,12 +1287,12 @@ with st.sidebar:
     **H1:** Apenas 1 por página  
     **Conteúdo:** Mínimo 300 palavras  
     **Performance:** Acima de 80  
-    **Legibilidade:** Score Flesch > 60
-    **SEO Geográfico:** Menções locais e Schema LocalBusiness
+    **Legibilidade:** Score Flesch > 60  
+    **GEO (IA):** FAQ, definições, exemplos e estrutura para IAs
     """)
 
 st.title("🔭 Auditoria de SEO e GEO On-Page")
-st.markdown("Análise completa de SEO e otimização geográfica com IA e insights estratégicos.")
+st.markdown("Análise completa de SEO tradicional e otimização para IAs generativas (GEO - Generative Engine Optimization).")
 
 # Mostra informações apenas se análise não foi iniciada
 show_tool_info()
@@ -1295,8 +1355,8 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
                         content_analysis = analyze_content_advanced(soup_principal, url_principal)
                 
                 if geo_seo_enabled:
-                    with st.spinner("🌍 Analisando SEO Geográfico..."):
-                        geo_analysis = analyze_geo_seo(soup_principal, url_principal)
+                    with st.spinner("🤖 Analisando GEO para IAs..."):
+                        geo_analysis = analyze_geo_ai_optimization(soup_principal, url_principal)
                 
                 psi_principal = get_pagespeed_insights(url_principal)
                 broken_links_principal = check_broken_links(url_principal, links_principais)
@@ -1425,91 +1485,114 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
                 
                 st.divider()
         
-        # === SEÇÃO DE ANÁLISE GEO ===
+        # === SEÇÃO DE ANÁLISE GEO (IA) ===
         if geo_seo_enabled and geo_analysis:
             geo_score = geo_analysis.get('geo_score', 0)
             
             if geo_score > 0:
-                st.markdown("#### 🌍 Análise de SEO Geográfico")
+                st.markdown("#### 🤖 Análise de GEO - Generative Engine Optimization")
                 
                 # Dashboard GEO
-                geo_dashboard = create_geo_seo_dashboard(geo_analysis)
+                geo_dashboard = create_geo_ai_dashboard(geo_analysis)
                 if geo_dashboard:
                     st.plotly_chart(geo_dashboard, use_container_width=True)
                 
                 # Métricas GEO
                 col1, col2, col3, col4 = st.columns(4)
                 
-                local_business = geo_analysis.get('local_business', {})
-                geo_content = geo_analysis.get('geographic_content', {})
-                location_signals = geo_analysis.get('location_signals', {})
+                content_structure = geo_analysis.get('content_structure', {})
+                factual_content = geo_analysis.get('factual_content', {})
+                ai_format = geo_analysis.get('ai_friendly_format', {})
+                authority_signals = geo_analysis.get('authority_signals', {})
                 
                 with col1:
-                    st.metric("🎯 Score GEO", f"{geo_score}/100")
-                    schema_found = "✅" if local_business.get('schema_found') else "❌"
-                    st.metric("🏢 Schema LocalBusiness", schema_found)
+                    st.metric("🎯 Score GEO (IA)", f"{geo_score}/100")
+                    
+                    faq_count = content_structure.get('faq_indicators', 0)
+                    st.metric("❓ Indicadores FAQ", faq_count)
                 
                 with col2:
-                    cities_count = geo_content.get('cities_mentioned', 0)
-                    st.metric("🏙️ Cidades Mencionadas", cities_count)
+                    definitions = ai_format.get('definitions', 0)
+                    st.metric("📖 Definições", definitions)
                     
-                    location_terms = geo_content.get('location_terms', 0)
-                    st.metric("📍 Termos de Localização", location_terms)
+                    examples = ai_format.get('examples', 0)
+                    st.metric("💡 Exemplos", examples)
                 
                 with col3:
-                    title_geo = "✅" if location_signals.get('title_has_location') else "❌"
-                    st.metric("📰 Title com Localização", title_geo)
+                    factual_indicators = factual_content.get('factual_indicators', 0)
+                    st.metric("📊 Indicadores Factuais", factual_indicators)
                     
-                    h1_geo = "✅" if location_signals.get('h1_has_location') else "❌"
-                    st.metric("🏷️ H1 com Localização", h1_geo)
+                    auth_links = factual_content.get('authoritative_links', 0)
+                    st.metric("🔗 Links Autoritários", auth_links)
                 
                 with col4:
-                    geo_meta = location_signals.get('geo_meta_tags', 0)
-                    st.metric("🏷️ Meta Tags GEO", geo_meta)
+                    author_mentioned = "✅" if authority_signals.get('author_mentioned') else "❌"
+                    st.metric("👤 Autor Mencionado", author_mentioned)
                     
-                    maps_links = location_signals.get('google_maps_links', 0)
-                    st.metric("🗺️ Links para Mapas", maps_links)
+                    article_schema = "✅" if authority_signals.get('article_schema') else "❌"
+                    st.metric("📰 Schema Article", article_schema)
                 
-                # Insights GEO
+                # Insights GEO para IA
                 geo_insights = []
                 
                 if geo_score >= 80:
-                    geo_insights.append("🏆 **Excelente otimização geográfica!**")
+                    geo_insights.append("🏆 **Excelente otimização para IAs generativas!**")
                 elif geo_score >= 60:
-                    geo_insights.append("👍 **Boa presença local, pode melhorar**")
+                    geo_insights.append("👍 **Bom conteúdo para IA, pode melhorar**")
                 else:
-                    geo_insights.append("⚠️ **SEO Geográfico precisa de atenção**")
+                    geo_insights.append("⚠️ **Conteúdo precisa ser otimizado para IAs**")
                 
-                if not local_business.get('schema_found'):
-                    geo_insights.append("🏢 **Adicione Schema LocalBusiness** - Melhora visibilidade local")
+                if faq_count == 0:
+                    geo_insights.append("❓ **Adicione formato FAQ** - IAs preferem perguntas e respostas claras")
                 
-                if cities_count == 0:
-                    geo_insights.append("🏙️ **Mencione cidades-alvo** - Importante para SEO local")
+                if definitions == 0:
+                    geo_insights.append("📖 **Inclua definições claras** - Essencial para compreensão das IAs")
                 
-                if not location_signals.get('title_has_location'):
-                    geo_insights.append("📰 **Inclua localização no title** - Fundamental para buscas locais")
+                if factual_indicators < 2:
+                    geo_insights.append("📊 **Adicione mais dados factuais** - IAs valorizam informações verificáveis")
                 
-                # Exibe cidades e estados encontrados
-                if geo_content.get('cities_list') or geo_content.get('states_list'):
-                    with st.expander("🗺️ Localizações Detectadas"):
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            if geo_content.get('cities_list'):
-                                st.markdown("**Cidades:**")
-                                for cidade in geo_content['cities_list']:
-                                    st.write(f"• {cidade.title()}")
-                        
-                        with col2:
-                            if geo_content.get('states_list'):
-                                st.markdown("**Estados:**")
-                                for estado in geo_content['states_list']:
-                                    st.write(f"• {estado.title()}")
+                if auth_links == 0:
+                    geo_insights.append("🔗 **Inclua fontes autoritárias** - Aumenta credibilidade para IAs")
+                
+                if not authority_signals.get('author_mentioned'):
+                    geo_insights.append("👤 **Mencione autoria** - IAs consideram autoridade do autor")
+                
+                if examples == 0:
+                    geo_insights.append("💡 **Adicione exemplos práticos** - Facilita compreensão das IAs")
+                
+                # Análise de estrutura hierárquica
+                hierarchy_score = content_structure.get('hierarchy_score', 0)
+                if hierarchy_score < 70:
+                    geo_insights.append("🏗️ **Melhore hierarquia de headings** - IAs seguem estrutura lógica")
                 
                 if geo_insights:
-                    with st.expander("💡 Insights de SEO Geográfico"):
+                    with st.expander("💡 Insights de GEO para IAs"):
                         for insight in geo_insights:
                             st.markdown(f"- {insight}")
+                
+                # Detalhes técnicos GEO
+                with st.expander("🔧 Detalhes Técnicos GEO"):
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.markdown("**📋 Estrutura de Conteúdo:**")
+                        st.write(f"• Listas: {content_structure.get('lists_count', 0)}")
+                        st.write(f"• Tabelas: {content_structure.get('tables_count', 0)}")
+                        st.write(f"• Headings: {content_structure.get('headings_count', 0)}")
+                        st.write(f"• Hierarquia: {hierarchy_score:.1f}%")
+                        
+                        st.markdown("**🤖 Formato Amigável para IA:**")
+                        st.write(f"• Comparações: {ai_format.get('comparisons', 0)}")
+                        st.write(f"• Instruções passo-a-passo: {ai_format.get('step_by_step', 0)}")
+                    
+                    with col2:
+                        st.markdown("**📊 Conteúdo Factual:**")
+                        st.write(f"• Citações: {factual_content.get('citations', 0)}")
+                        st.write(f"• Palavras: {authority_signals.get('word_count', 0)}")
+                        
+                        st.markdown("**🏛️ Sinais de Autoridade:**")
+                        st.write(f"• Data mencionada: {'✅' if authority_signals.get('date_mentioned') else '❌'}")
+                        st.write(f"• Schema Article: {'✅' if authority_signals.get('article_schema') else '❌'}")
                 
                 st.divider()
         
@@ -1936,7 +2019,7 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #696969; font-size: 0.8em;'>
-<b>Auditoria de SEO e GEO On-Page v2.2</b> | Análise completa de SEO técnico e geográfico
+<b>Auditoria de SEO e GEO On-Page v2.3</b> | SEO tradicional + Generative Engine Optimization
 </div>
 """, unsafe_allow_html=True)
 
