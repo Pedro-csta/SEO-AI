@@ -28,21 +28,28 @@ PSI_API_KEY = os.getenv("PSI_API_KEY")
 # ========== FUNÇÕES DE AUDITORIA (PILAR 2) ==========
 
 def get_pagespeed_insights(url_to_check: str) -> dict:
-    """Busca dados do Google PageSpeed Insights para mobile e desktop."""
+    """Busca dados do Google PageSpeed Insights e detecta redirecionamentos."""
     if not PSI_API_KEY:
         st.warning("Chave da API do PageSpeed (PSI_API_KEY) não configurada. Análise de performance pulada.", icon="⚠️")
         return {}
 
-    insights_data = {}
+    insights_data = {"redirected": False} # Iniciamos o dicionário
     strategies = ["mobile", "desktop"]
     
     for strategy in strategies:
         api_url = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={url_to_check}&strategy={strategy}&key={PSI_API_KEY}"
         try:
-            # AJUSTE: Aumentamos o timeout para 60 segundos para sermos mais pacientes.
+            # AJUSTE: Timeout aumentado para 60 segundos.
             response = requests.get(api_url, timeout=60)
             response.raise_for_status()
             data = response.json()
+            
+            # AJUSTE: Captura a URL final para detectar redirecionamentos.
+            final_url = data.get('lighthouseResult', {}).get('finalUrl', url_to_check)
+            insights_data['final_url'] = final_url
+            
+            if url_to_check != final_url:
+                insights_data['redirected'] = True
             
             categories = data.get('lighthouseResult', {}).get('categories', {})
             scores = {category: int(categories.get(category, {}).get('score', 0) * 100) for category in ['performance', 'accessibility', 'best-practices', 'seo']}
@@ -57,8 +64,8 @@ def get_pagespeed_insights(url_to_check: str) -> dict:
             
     return insights_data
 
-# ... (A função check_broken_links e onpage_checks continuam exatamente iguais) ...
 def check_broken_links(base_url: str, internal_links: list) -> list:
+    """Verifica uma lista de links internos e retorna os que estão quebrados."""
     broken_links = []
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
     for link in internal_links:
@@ -72,7 +79,11 @@ def check_broken_links(base_url: str, internal_links: list) -> list:
         time.sleep(0.1)
     return broken_links
 
+
+# ========== FUNÇÕES DE AUDITORIA (PRINCIPAL) ==========
+
 def onpage_checks(url):
+    """Executa a auditoria on-page e retorna os dados e a lista de links internos."""
     try:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
         response = requests.get(url, timeout=10, headers=headers)
@@ -110,15 +121,13 @@ def onpage_checks(url):
     checks["word_count"] = len(body_text.split())
     return checks, internal_links
 
-
 def generate_gemini_recommendations(checks, url):
     """Gera recomendações de SEO usando Google Gemini."""
     if not gemini_configured:
-        return "A análise por IA está desabilitada pois a chave da API do Gemini não foi configurada corretamente."
+        return "A análise por IA está desabilitada pois a chave da API do Gemini não foi configurada corretamente.", ""
         
     report_details = "\n".join([f"- {key.replace('_', ' ').title()}: {value}" for key, value in checks.items()])
     
-    # Este prompt será visível na interface para depuração
     prompt = f"""
     Você é um especialista sênior em SEO, encarregado de analisar uma página da web e fornecer um feedback claro e acionável.
 
@@ -146,7 +155,7 @@ def generate_gemini_recommendations(checks, url):
     try:
         gemini_model = genai.GenerativeModel("gemini-1.5-flash")
         gemini_resp = gemini_model.generate_content(prompt)
-        return prompt, gemini_resp.text # Retornamos o prompt E a resposta
+        return prompt, gemini_resp.text
     except Exception as e:
         st.error(f"Erro ao chamar a API do Gemini: {e}")
         return prompt, "Houve um erro ao gerar a análise da IA. Verifique as configurações da sua API."
@@ -161,7 +170,6 @@ st.markdown("Análise de SEO On-Page, Performance e Experiência do Usuário com
 url = st.text_input("Insira a URL completa para auditoria:", key="url_input")
 
 if st.button("🛰️ Rodar Auditoria Completa", type="primary"):
-    # (Toda a lógica da interface continua igual, mas agora com a chamada da nova função do Gemini)
     if not url.startswith("http"):
         st.error("Por favor, insira uma URL válida (inclua http:// ou https://).")
     else:
@@ -179,7 +187,16 @@ if st.button("🛰️ Rodar Auditoria Completa", type="primary"):
             
             if psi_results:
                 st.subheader("🚀 Análise de Performance e Experiência (Google PageSpeed)")
-                # (UI do PageSpeed inalterada)
+                
+                # AJUSTE: Aviso inteligente de redirecionamento.
+                if psi_results.get('redirected'):
+                    st.info(f"""
+                    **Aviso de Redirecionamento:** A URL que você inseriu foi redirecionada para: 
+                    `{psi_results.get('final_url')}`. 
+                    Isso é comum, mas pode ser a causa dos scores de Acessibilidade, Melhores Práticas e SEO estarem zerados, 
+                    pois o Google pode não executar todas as auditorias após um redirecionamento.
+                    """, icon="↪️")
+                
                 col_mob, col_desk = st.columns(2)
                 with col_mob:
                     st.markdown("#### Mobile")
@@ -195,7 +212,6 @@ if st.button("🛰️ Rodar Auditoria Completa", type="primary"):
                     st.metric("SEO", f"{psi_results.get('desktop', {}).get('seo', 'N/A')}")
 
             st.subheader("🔗 Verificação de Links Quebrados")
-            # (UI dos Links Quebrados inalterada)
             if not broken_links_list:
                 st.success("Ótima notícia! Nenhum link interno quebrado foi encontrado.")
             else:
@@ -204,7 +220,6 @@ if st.button("🛰️ Rodar Auditoria Completa", type="primary"):
                 st.table(df_broken)
 
             st.subheader("📊 Painel de Auditoria On-Page")
-            # (UI do painel On-Page inalterada)
             df = pd.DataFrame({"Elemento": ["Título", "Meta Description", "H1 (Primeiro)"],"Conteúdo": [onpage_results.get("title", ""), onpage_results.get("meta_description", ""), onpage_results.get("h1_text", "")]})
             st.table(df)
             col1, col2, col3 = st.columns(3)
@@ -216,10 +231,9 @@ if st.button("🛰️ Rodar Auditoria Completa", type="primary"):
             st.divider()
             st.subheader("🤖 Análise e Recomendações (via Gemini)")
             with st.spinner("Etapa 3/3: A IA está processando todos os dados para criar as melhores recomendações..."):
-                # AJUSTE: Capturamos o prompt e a resposta
                 prompt_enviado, gemini_sug = generate_gemini_recommendations(onpage_results, url)
                 
-                # AJUSTE: Novo expander para depuração do prompt
+                # AJUSTE: Expander para depuração do prompt.
                 with st.expander("Clique para ver o prompt exato enviado para a IA"):
                     st.code(prompt_enviado, language="markdown")
                 
