@@ -25,6 +25,7 @@ import validators
 import json
 from collections import Counter
 from datetime import datetime, timedelta
+import re
 
 # ========== CONFIGURAÇÃO DAS APIS ==========
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -1468,9 +1469,6 @@ def generate_competitive_analysis(df_competitivo, url_principal):
         return f"Erro ao gerar análise estratégica: {str(e)}"
 
 # ========== NOVA FUNCIONALIDADE: ANÁLISE DE TECNOLOGIAS ==========
-import re
-import json
-
 def detect_technologies(soup, response_headers, response_text):
     """Detecta tecnologias usadas no site (tipo Wappalyzer)"""
     technologies = {
