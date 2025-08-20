@@ -1,5 +1,5 @@
 def create_sitemap_visualization(site_structure):
-    """Cria visualização profissional e legível do sitemap"""
+    """Cria visualização profissional e legível do sitemap""" do sitemap"""
     if not site_structure.get('structure'):
         return None
     
