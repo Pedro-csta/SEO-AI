@@ -1032,7 +1032,7 @@ st.markdown("""
 - Análise de segurança - Headers HTTP e proteções
 - Auditoria de acessibilidade - WCAG básico
 - Mapeamento de arquitetura - Visualização da estrutura do site
-- Comparação competitiva avançada - Radar 360° e insights automatizados
+- Comparação competitiva avançada - Radar 360 graus e insights automatizados
 - Score geral de SEO - Algoritmo proprietário
 - Dados estruturados - Schema.org e microdata
 
@@ -1058,7 +1058,7 @@ st.markdown("""
 
 #### Visualizações Avançadas:
 - Gráficos Gauge para scores individuais
-- Radar 360° para comparação competitiva
+- Radar 360 graus para comparação competitiva
 - Mapa hierárquico da arquitetura do site
 - Dashboards interativos com Plotly
 
