@@ -750,8 +750,9 @@ def create_sitemap_visualization(site_structure):
             textposition="middle center",
             textfont=dict(
                 size=10, 
-                color='white',
-                family="Arial"
+                color='#2F4F4F',  # Mudança para cor escura para contraste
+                family="Arial",
+                weight="bold"
             ),
             hovertemplate='%{customdata}<extra></extra>',
             customdata=hover_texts,
@@ -1239,6 +1240,330 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
                             st.plotly_chart(fig_desktop, use_container_width=True)
                     if seo_desk > 0:
                         st.metric("SEO Score", f"{seo_desk}/100")
+        
+        # --- ANÁLISE COMPETITIVA (SE HOUVER) ---
+        urls_competidores_limpas = [url.strip() for url in competidores_raw.splitlines() if url.strip()][:3]  # Máximo 3
+        
+        if urls_competidores_limpas:
+            st.divider()
+            st.subheader("🏆 Comparação Competitiva")
+            
+            todos_os_resultados = []
+            
+            # Adiciona resultado principal
+            resultado_principal = {
+                "URL": url_principal, 
+                "Site": urlparse(url_principal).netloc, 
+                **onpage_principal,
+                "Performance Mobile": psi_principal.get('mobile', {}).get('psi_performance', 0),
+                "SEO Score": overall_score
+            }
+            
+            # Adiciona métricas das novas análises
+            if content_analysis:
+                resultado_principal["Content Score"] = content_analysis.get('content_quality', {}).get('quality_score', 0)
+                resultado_principal["Flesch Score"] = content_analysis.get('readability', {}).get('flesch_score', 0)
+            
+            todos_os_resultados.append(resultado_principal)
+
+            # Analisa concorrentes
+            progress_bar = st.progress(0)
+            competitor_dashboards = []  # Lista para armazenar dashboards dos concorrentes
+            
+            for i, url_comp in enumerate(urls_competidores_limpas):
+                is_valid, url_comp = validate_url(url_comp)
+                if is_valid:
+                    try:
+                        with st.spinner(f"Analisando {urlparse(url_comp).netloc}..."):
+                            onpage_comp, _, soup_comp = onpage_checks(url_comp)
+                            if onpage_comp:
+                                psi_comp = get_pagespeed_insights(url_comp)
+                                structured_comp = analyze_structured_data(soup_comp) if deep_analysis else {}
+                                site_structure_comp = extract_site_structure(url_comp, max_pages=max_pages_sitemap//2) if extract_structure else {}
+                                content_comp = analyze_content_advanced(soup_comp, url_comp) if content_analysis_enabled else {}
+                                
+                                comp_score = calculate_overall_seo_score(onpage_comp, psi_comp, {}, structured_comp)
+                                
+                                # Armazena dados do concorrente para dashboard individual
+                                competitor_dashboards.append({
+                                    'url': url_comp,
+                                    'domain': urlparse(url_comp).netloc,
+                                    'onpage': onpage_comp,
+                                    'psi': psi_comp,
+                                    'structured': structured_comp,
+                                    'site_structure': site_structure_comp,
+                                    'content': content_comp,
+                                    'score': comp_score
+                                })
+                                
+                                resultado_comp = {
+                                    "URL": url_comp, 
+                                    "Site": urlparse(url_comp).netloc, 
+                                    **onpage_comp,
+                                    "Performance Mobile": psi_comp.get('mobile', {}).get('psi_performance', 0),
+                                    "SEO Score": comp_score
+                                }
+                                
+                                # Adiciona métricas das novas análises
+                                if content_comp:
+                                    resultado_comp["Content Score"] = content_comp.get('content_quality', {}).get('quality_score', 0)
+                                    resultado_comp["Flesch Score"] = content_comp.get('readability', {}).get('flesch_score', 0)
+                                
+                                todos_os_resultados.append(resultado_comp)
+                    except Exception as e:
+                        st.warning(f"Erro ao analisar {url_comp}: {str(e)[:100]}")
+                
+                progress_bar.progress((i + 1) / len(urls_competidores_limpas))
+            
+            # === DASHBOARDS INDIVIDUAIS DOS CONCORRENTES ===
+            if competitor_dashboards:
+                st.markdown("#### 🏢 Análise Individual dos Concorrentes")
+                
+                # Tabs para cada concorrente
+                tab_names = [f"🏢 {comp['domain']}" for comp in competitor_dashboards]
+                if len(tab_names) == 1:
+                    tabs = [st.container()]
+                else:
+                    tabs = st.tabs(tab_names)
+                
+                for i, (tab, comp_data) in enumerate(zip(tabs, competitor_dashboards)):
+                    with tab:
+                        st.markdown(f"**Análise de: {comp_data['domain']}**")
+                        
+                        # Mini dashboard para cada concorrente
+                        col1, col2, col3, col4 = st.columns(4)
+                        
+                        with col1:
+                            if comp_data['score'] > 0:
+                                mini_gauge = create_seo_score_gauge(comp_data['score'], f"Score: {comp_data['domain']}")
+                                if mini_gauge:
+                                    st.plotly_chart(mini_gauge, use_container_width=True)
+                            else:
+                                st.info("Score não disponível")
+                        
+                        with col2:
+                            st.metric("📝 Palavras", comp_data['onpage'].get("word_count", 0))
+                            st.metric("🔗 Links Internos", comp_data['onpage'].get("links_internos", 0))
+                        
+                        with col3:
+                            st.metric("🖼️ Imagens", comp_data['onpage'].get("image_count", 0))
+                            perf_mobile = comp_data['psi'].get('mobile', {}).get('psi_performance', 0)
+                            st.metric("📱 Performance", f"{perf_mobile}/100" if perf_mobile > 0 else "N/A")
+                        
+                        with col4:
+                            st.metric("🏷️ Title Length", comp_data['onpage'].get('title_length', 0))
+                            h1_count = comp_data['onpage'].get('h1_count', 0)
+                            st.metric("📋 H1 Count", h1_count)
+                        
+                        # Análises adicionais do concorrente
+                        if comp_data.get('content'):
+                            content_score = comp_data['content'].get('content_quality', {}).get('quality_score', 0)
+                            if content_score > 0:
+                                with st.expander("📝 Análise de Conteúdo"):
+                                    flesch_score = comp_data['content'].get('readability', {}).get('flesch_score', 'N/A')
+                                    st.metric("Qualidade do Conteúdo", f"{content_score}/100")
+                                    if isinstance(flesch_score, (int, float)) and flesch_score > 0:
+                                        st.metric("Legibilidade Flesch", f"{flesch_score:.1f}")
+                        
+                        # Sitemap do concorrente (se disponível)
+                        if comp_data.get('site_structure') and comp_data['site_structure'].get('structure'):
+                            with st.expander(f"🗺️ Ver estrutura de {comp_data['domain']}"):
+                                sitemap_comp = create_sitemap_visualization(comp_data['site_structure'])
+                                if sitemap_comp:
+                                    st.plotly_chart(sitemap_comp, use_container_width=True)
+                                
+                                strategy_comp = analyze_site_strategy(comp_data['site_structure'])
+                                if strategy_comp:
+                                    st.markdown("**Estratégia de Estrutura:**")
+                                    st.markdown(strategy_comp)
+            
+            # Exibe comparação
+            if len(todos_os_resultados) > 1:
+                df_comparativo = pd.DataFrame(todos_os_resultados)
+                
+                # Colunas para exibição da comparação
+                display_columns = [
+                    "Site", "SEO Score", "word_count", "Performance Mobile", 
+                    "links_internos", "image_count", "title_length"
+                ]
+                
+                # Adiciona novas métricas se disponíveis
+                if "Content Score" in df_comparativo.columns:
+                    display_columns.insert(-2, "Content Score")
+                
+                df_display = df_comparativo[display_columns].rename(columns={
+                    "word_count": "Palavras", 
+                    "links_internos": "Links Internos", 
+                    "image_count": "Imagens",
+                    "title_length": "Tam. Título",
+                    "Content Score": "Score Conteúdo"
+                })
+                
+                st.dataframe(df_display, use_container_width=True)
+                
+                # Gráficos comparativos em tons de cinza
+                st.markdown("#### 📈 Comparação Visual")
+                
+                site_principal = urlparse(url_principal).netloc
+                
+                # Paleta monocromática para gráficos
+                def create_monochrome_colors(n_colors, highlight_index=0):
+                    """Cria paleta monocromática com destaque para o site principal"""
+                    colors = []
+                    for i in range(n_colors):
+                        if i == highlight_index:
+                            colors.append('#2F4F4F')  # Destaque para site principal
+                        else:
+                            gray_intensity = 0.4 + (i * 0.2)  # Varia tons de cinza
+                            colors.append(f'rgba(105,105,105,{min(gray_intensity, 1.0)})')
+                    return colors
+                
+                n_sites = len(df_display)
+                colors = create_monochrome_colors(n_sites)
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    fig_comp_seo = px.bar(df_display, x='Site', y='SEO Score', 
+                                         title="Score Geral de SEO",
+                                         color_discrete_sequence=colors)
+                    fig_comp_seo.update_layout(
+                        plot_bgcolor='white',
+                        paper_bgcolor='white',
+                        title_font_color='#2F4F4F'
+                    )
+                    st.plotly_chart(fig_comp_seo, use_container_width=True)
+                
+                with col2:
+                    fig_comp_perf = px.bar(df_display, x='Site', y='Performance Mobile',
+                                          title="Performance Mobile",
+                                          color_discrete_sequence=colors)
+                    fig_comp_perf.update_layout(
+                        plot_bgcolor='white',
+                        paper_bgcolor='white',
+                        title_font_color='#2F4F4F'
+                    )
+                    st.plotly_chart(fig_comp_perf, use_container_width=True)
+                
+                # Gráfico adicional se há dados de conteúdo
+                if "Score Conteúdo" in df_display.columns:
+                    col3, col4 = st.columns(2)
+                    
+                    with col3:
+                        fig_content = px.bar(df_display, x='Site', y='Score Conteúdo',
+                                           title="Qualidade do Conteúdo",
+                                           color_discrete_sequence=colors)
+                        fig_content.update_layout(
+                            plot_bgcolor='white',
+                            paper_bgcolor='white',
+                            title_font_color='#2F4F4F'
+                        )
+                        st.plotly_chart(fig_content, use_container_width=True)
+        
+        # --- RECOMENDAÇÕES FINAIS ---
+        st.divider()
+        st.subheader("💡 Resumo e Próximos Passos")
+        
+        # Identifica principais problemas
+        issues = []
+        if onpage_principal.get('title_length', 0) == 0:
+            issues.append("❌ **Title ausente** - Crítico para SEO")
+        elif onpage_principal.get('title_length', 0) > 60:
+            issues.append("⚠️ **Title muito longo** - Pode ser cortado nos resultados")
+        
+        if onpage_principal.get('h1_count', 0) == 0:
+            issues.append("❌ **H1 ausente** - Importante para estrutura")
+        elif onpage_principal.get('h1_count', 0) > 1:
+            issues.append("⚠️ **Múltiplos H1** - Use apenas um H1 por página")
+        
+        if onpage_principal.get('word_count', 0) < 300:
+            issues.append("⚠️ **Conteúdo insuficiente** - Mínimo recomendado: 300 palavras")
+        
+        if onpage_principal.get('images_sem_alt', 0) > 0:
+            issues.append(f"⚠️ **{onpage_principal.get('images_sem_alt', 0)} imagens sem alt text** - Prejudica acessibilidade")
+        
+        if broken_links_principal:
+            issues.append(f"❌ **{len(broken_links_principal)} links quebrados** - Prejudica experiência do usuário")
+        
+        if psi_principal and psi_principal.get('mobile', {}).get('psi_performance', 0) < 60:
+            issues.append("⚠️ **Performance baixa** - Afeta ranking e experiência")
+        
+        if deep_analysis and structured_data and len(structured_data.get('schemas_found', [])) == 0:
+            issues.append("⚠️ **Dados estruturados ausentes** - Oportunidade perdida para rich snippets")
+        
+        # Problemas de conteúdo
+        if content_analysis:
+            content_score = content_analysis.get('content_quality', {}).get('quality_score', 0)
+            if content_score < 50 and content_score > 0:
+                issues.append("📝 **Qualidade do conteúdo baixa** - Revise estrutura e legibilidade")
+            
+            flesch_score = content_analysis.get('readability', {}).get('flesch_score', 0)
+            if isinstance(flesch_score, (int, float)) and flesch_score < 30 and flesch_score > 0:
+                issues.append("📚 **Texto muito complexo** - Simplifique para melhor compreensão")
+        
+        # Exibe problemas encontrados
+        if issues:
+            st.markdown("#### 🚨 Problemas Identificados")
+            for issue in issues[:8]:  # Mostra no máximo 8 problemas principais
+                st.markdown(issue)
+        else:
+            st.success("🎉 **Excelente!** Nenhum problema crítico encontrado!")
+        
+        # Recomendações baseadas no score
+        st.markdown("#### 🎯 Prioridades de Otimização")
+        
+        if overall_score >= 80:
+            st.success("🏆 **Site bem otimizado!** Foque em:")
+            recommendations = [
+                "🔍 Monitoramento contínuo de performance",
+                "📝 Criação de conteúdo de qualidade regular",
+                "📊 Análise de comportamento de usuários",
+                "🎯 Otimização para featured snippets"
+            ]
+        elif overall_score >= 60:
+            st.warning("🚀 **Bom potencial!** Otimize:")
+            recommendations = [
+                "📱 Performance mobile (Core Web Vitals)",
+                "🎯 Qualidade e estrutura do conteúdo",
+                "🖼️ Alt text em todas as imagens",
+                "🏗️ Implementação de dados estruturados"
+            ]
+        else:
+            st.error("⚠️ **Necessita atenção urgente!** Priorize:")
+            recommendations = [
+                "📝 Title e meta description adequados",
+                "🏷️ Estrutura H1 correta",
+                "📄 Conteúdo mais robusto (mín. 300 palavras)",
+                "🔧 Correção de problemas técnicos básicos",
+                "📚 Melhoria da legibilidade do texto"
+            ]
+        
+        for rec in recommendations:
+            st.markdown(f"- {rec}")
+        
+        # Dados técnicos completos (expansível)
+        with st.expander("🔧 Ver todos os dados técnicos"):
+            tab1, tab2, tab3, tab4 = st.tabs(["📊 On-Page", "🚀 Performance", "📝 Conteúdo", "🏗️ Estruturados"])
+            
+            with tab1:
+                st.json(onpage_principal)
+            
+            with tab2:
+                if psi_principal:
+                    st.json(psi_principal)
+                else:
+                    st.info("Dados de performance não disponíveis")
+            
+            with tab3:
+                if content_analysis:
+                    st.json(content_analysis)
+                else:
+                    st.info("Análise de conteúdo não realizada")
+            
+            with tab4:
+                if structured_data:
+                    st.json(structured_data)
+                else:
+                    st.info("Análise de dados estruturados não realizada")
 
 # Footer
 st.markdown("---")
