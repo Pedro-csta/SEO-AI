@@ -1025,47 +1025,47 @@ st.markdown("""
 
 **A ferramenta mais completa de análise SEO do mercado**, combinando análise técnica avançada com inteligência artificial para fornecer insights estratégicos únicos.
 
-#### 🎯 **Funcionalidades Principais:**
-- ✅ **Performance & Core Web Vitals** (Google PageSpeed Insights)
-- ✅ **Análise on-page completa** com validação robusta
-- ✅ **Detecção de tecnologias** (tipo Wappalyzer) - CMS, frameworks, analytics
-- ✅ **Análise de segurança** - Headers HTTP e proteções
-- ✅ **Auditoria de acessibilidade** - WCAG básico
-- ✅ **Mapeamento de arquitetura** - Visualização da estrutura do site
-- ✅ **Comparação competitiva avançada** - Radar 360° e insights automatizados
-- ✅ **Score geral de SEO** - Algoritmo proprietário
-- ✅ **Dados estruturados** - Schema.org e microdata
+#### Funcionalidades Principais:
+- Performance & Core Web Vitals (Google PageSpeed Insights)
+- Análise on-page completa com validação robusta
+- Detecção de tecnologias (tipo Wappalyzer) - CMS, frameworks, analytics
+- Análise de segurança - Headers HTTP e proteções
+- Auditoria de acessibilidade - WCAG básico
+- Mapeamento de arquitetura - Visualização da estrutura do site
+- Comparação competitiva avançada - Radar 360° e insights automatizados
+- Score geral de SEO - Algoritmo proprietário
+- Dados estruturados - Schema.org e microdata
 
-#### 🔧 **Tecnologias Detectadas:**
+#### Tecnologias Detectadas:
 **CMS:** WordPress, Shopify, Drupal, Magento, Webflow, Wix  
 **Analytics:** Google Analytics, Facebook Pixel, Hotjar, Mixpanel  
 **Frameworks:** React, Vue.js, Angular, jQuery, Bootstrap, Tailwind  
 **CDN:** Cloudflare, Amazon CloudFront, Google Cloud  
 **E-commerce:** WooCommerce, Shopify, BigCommerce  
 
-#### 🛡️ **Análise de Segurança:**
+#### Análise de Segurança:
 - Content Security Policy (CSP)
 - HTTP Strict Transport Security (HSTS) 
 - X-Frame-Options
 - X-XSS-Protection
 - Headers de proteção de conteúdo
 
-#### ♿ **Auditoria de Acessibilidade:**
+#### Auditoria de Acessibilidade:
 - Alt text em imagens
 - Labels em formulários
 - Estrutura semântica de headings
 - Compliance WCAG básico
 
-#### 🎨 **Visualizações Avançadas:**
-- **Gráficos Gauge** para scores individuais
-- **Radar 360°** para comparação competitiva
-- **Mapa hierárquico** da arquitetura do site
-- **Dashboards interativos** com Plotly
+#### Visualizações Avançadas:
+- Gráficos Gauge para scores individuais
+- Radar 360° para comparação competitiva
+- Mapa hierárquico da arquitetura do site
+- Dashboards interativos com Plotly
 
-#### 🤖 **Inteligência Artificial:**
-- **Insights automatizados** baseados em análise comparativa
-- **Recomendações priorizadas** por impacto
-- **Estratégias competitivas** personalizadas
+#### Inteligência Artificial:
+- Insights automatizados baseados em análise comparativa
+- Recomendações priorizadas por impacto
+- Estratégias competitivas personalizadas
 
 **Desenvolvido com:** Python, Streamlit, Google Gemini AI, PageSpeed Insights API, Plotly, BeautifulSoup
 
