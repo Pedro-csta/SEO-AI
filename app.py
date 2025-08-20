@@ -2034,9 +2034,12 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
 # Footer
 st.markdown("---")
 st.markdown("""
-<div style='text-align: center; color: #696969; font-size: 0.8em;'>
-<b>Auditoria de SEO e GEO On-Page v2.3</b> | SEO tradicional + Generative Engine Optimization
+<div style="text-align: center; color: #696969; font-size: 0.8em;">
+  <b>Auditoria de SEO e GEO On-Page v2.3</b> | SEO tradicional + Generative Engine Optimization
+  <br>
+  Feito por <a href="https://pedrocosta-portfolio.lovable.app/" target="_blank" style="color: #696969; text-decoration: none; font-weight: bold;">Pedro Costa</a> com Python e IA 🤍
 </div>
+
 """, unsafe_allow_html=True)
 
 # Rate limiting
