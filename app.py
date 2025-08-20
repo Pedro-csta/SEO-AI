@@ -1,4 +1,6 @@
-geo_seo_enabled = st.checkbox("🤖 Análise de GEO (Generative Engine Optimization)", value=True,
+# ==============================================================================
+# SEÇÃO DE IMPORTAÇÕES (TODAS JUNTAS NO INÍCIO)
+# ==============================================================================
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
@@ -18,6 +20,10 @@ from textstat import flesch_reading_ease, automated_readability_index
 import nltk
 from nltk.tokenize import sent_tokenize, word_tokenize
 from nltk.corpus import stopwords
+
+# ==============================================================================
+# CONFIGURAÇÕES INICIAIS E DOWNLOADS
+# ==============================================================================
 
 # Download necessário para NLTK (executar apenas uma vez)
 try:
@@ -46,6 +52,11 @@ else:
     st.warning("Chave da API Gemini (GEMINI_API_KEY) não encontrada...", icon="⚠️")
 
 PSI_API_KEY = os.getenv("PSI_API_KEY")
+
+# ==============================================================================
+# DEFINIÇÃO DAS FUNÇÕES DE ANÁLISE
+# (Toda a sua lógica de análise permanece aqui)
+# ==============================================================================
 
 # ========== NOVA FUNCIONALIDADE: ANÁLISE DE GEO (GENERATIVE ENGINE OPTIMIZATION) ==========
 def analyze_geo_ai_optimization(soup, url):
@@ -276,8 +287,8 @@ def create_geo_ai_dashboard(geo_analysis):
                'borderwidth': 2,
                'bordercolor': "#D3D3D3",
                'steps': [{'range': [0, 50], 'color': "#F5F5F5"},
-                        {'range': [50, 70], 'color': "#E8E8E8"},
-                        {'range': [70, 100], 'color': "#DCDCDC"}]}
+                         {'range': [50, 70], 'color': "#E8E8E8"},
+                         {'range': [70, 100], 'color': "#DCDCDC"}]}
     ), row=1, col=1)
     
     # Estrutura para IA
@@ -346,6 +357,7 @@ def create_geo_ai_dashboard(geo_analysis):
     )
     
     return fig
+
 def analyze_content_advanced(soup, url):
     """Análise avançada de conteúdo com métricas de legibilidade e estrutura"""
     analysis = {
@@ -561,8 +573,8 @@ def create_content_quality_dashboard(content_analysis):
                'borderwidth': 2,
                'bordercolor': "#D3D3D3",
                'steps': [{'range': [0, 50], 'color': "#F5F5F5"},
-                        {'range': [50, 70], 'color': "#E8E8E8"},
-                        {'range': [70, 100], 'color': "#DCDCDC"}]}
+                         {'range': [50, 70], 'color': "#E8E8E8"},
+                         {'range': [70, 100], 'color': "#DCDCDC"}]}
     ), row=1, col=1)
     
     # Gauge de legibilidade (tons de cinza)
@@ -580,8 +592,8 @@ def create_content_quality_dashboard(content_analysis):
                    'borderwidth': 2,
                    'bordercolor': "#D3D3D3",
                    'steps': [{'range': [0, 30], 'color': "#F5F5F5"},
-                            {'range': [30, 60], 'color': "#E8E8E8"},
-                            {'range': [60, 100], 'color': "#DCDCDC"}]}
+                             {'range': [30, 60], 'color': "#E8E8E8"},
+                             {'range': [60, 100], 'color': "#DCDCDC"}]}
         ), row=1, col=2)
     
     # Gráfico de estrutura (tons de cinza)
@@ -1202,7 +1214,7 @@ def onpage_checks(url):
         headers = {"User-Agent": "Mozilla/5.0"}
         response = requests.get(url, timeout=10, headers=headers)
         response.raise_for_status()
-    except requests.exceptions.RequestException: return None, []
+    except requests.exceptions.RequestException: return None, [], None
     
     soup = BeautifulSoup(response.text, "html.parser")
     checks = {}
@@ -1234,7 +1246,10 @@ def onpage_checks(url):
     
     return checks, internal_links, soup
 
-# ========== INTERFACE STREAMLIT ==========
+# ==============================================================================
+# INTERFACE DO STREAMLIT (A "CONSTRUÇÃO" DO APP)
+# ==============================================================================
+
 st.set_page_config(page_title="SEO AI Strategist Pro", page_icon="🔭", layout="wide")
 
 # ========== PÁGINA INICIAL ==========
@@ -1265,19 +1280,20 @@ with st.sidebar:
     st.header("⚙️ Configurações de Análise")
     
     deep_analysis = st.checkbox("🔍 Análise profunda", value=True,
-                               help="Inclui análise de dados estruturados")
+                                help="Inclui análise de dados estruturados")
     
     extract_structure = st.checkbox("🗺️ Mapear estrutura do site", value=True,
-                                   help="Cria mapa visual da arquitetura do site")
+                                    help="Cria mapa visual da arquitetura do site")
     
     content_analysis_enabled = st.checkbox("📝 Análise avançada de conteúdo", value=True,
-                                          help="Análise de legibilidade, estrutura e qualidade do conteúdo")
+                                           help="Análise de legibilidade, estrutura e qualidade do conteúdo")
     
+    # <-- LINHA CORRIGIDA E MOVIDA PARA O LUGAR CERTO
     geo_seo_enabled = st.checkbox("🤖 Análise de GEO (Generative Engine Optimization)", value=True,
-                                 help="Otimização para IAs generativas como ChatGPT, Gemini, Claude")
+                                  help="Otimização para IAs generativas como ChatGPT, Gemini, Claude")
     
     max_pages_sitemap = st.slider("Máx. páginas para sitemap", 10, 50, 20,
-                                 help="Limite de páginas para análise de estrutura")
+                                  help="Limite de páginas para análise de estrutura")
     
     st.divider()
     st.markdown("### 📊 Métricas Ideais")
@@ -1299,7 +1315,7 @@ show_tool_info()
 
 st.subheader("🚀 Análise Principal")
 url_principal = st.text_input("Insira a URL do seu site:", key="url_principal",
-                             placeholder="https://seusite.com.br")
+                              placeholder="https://seusite.com.br")
 
 # Validação em tempo real
 if url_principal:
@@ -1313,8 +1329,8 @@ if url_principal:
 
 st.subheader("🏆 Análise Competitiva (Opcional)")
 competidores_raw = st.text_area("URLs dos concorrentes (uma por linha):", 
-                                key="url_competidores", height=100,
-                                placeholder="https://concorrente1.com\nhttps://concorrente2.com")
+                                 key="url_competidores", height=100,
+                                 placeholder="https://concorrente1.com\nhttps://concorrente2.com")
 
 if st.button("🛰️ Iniciar Análise Completa", type="primary"):
     if not url_principal:
@@ -1874,8 +1890,8 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
                 col1, col2 = st.columns(2)
                 with col1:
                     fig_comp_seo = px.bar(df_display, x='Site', y='SEO Score', 
-                                         title="Score Geral de SEO",
-                                         color_discrete_sequence=colors)
+                                          title="Score Geral de SEO",
+                                          color_discrete_sequence=colors)
                     fig_comp_seo.update_layout(
                         plot_bgcolor='white',
                         paper_bgcolor='white',
@@ -1885,8 +1901,8 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
                 
                 with col2:
                     fig_comp_perf = px.bar(df_display, x='Site', y='Performance Mobile',
-                                          title="Performance Mobile",
-                                          color_discrete_sequence=colors)
+                                           title="Performance Mobile",
+                                           color_discrete_sequence=colors)
                     fig_comp_perf.update_layout(
                         plot_bgcolor='white',
                         paper_bgcolor='white',
@@ -1900,8 +1916,8 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
                     
                     with col3:
                         fig_content = px.bar(df_display, x='Site', y='Score Conteúdo',
-                                           title="Qualidade do Conteúdo",
-                                           color_discrete_sequence=colors)
+                                             title="Qualidade do Conteúdo",
+                                             color_discrete_sequence=colors)
                         fig_content.update_layout(
                             plot_bgcolor='white',
                             paper_bgcolor='white',
