@@ -1,8 +1,5 @@
-# requirements.txt (Atualizado)
-streamlit
-requests
-beautifulsoup4
-google-generativeai
-advertools
-extruct
-serpapi
+streamlit>=1.36.0
+requests>=2.31.0
+beautifulsoup4>=4.12.3
+google-generativeai>=0.7.0
+pandas>=2.2.2
