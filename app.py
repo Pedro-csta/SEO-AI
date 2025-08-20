@@ -621,7 +621,7 @@ def create_content_quality_dashboard(content_analysis):
         counts = list(top_words.values())[:5]
         
         # Paleta de cinzas
-        level_colors = ['#264653', '#2a9d8f', '#e9c46a', '#f4a261', '#e76f51', '#d62828']
+        gray_colors = ['#2F4F4F', '#708090', '#778899', '#A9A9A9', '#C0C0C0']
         
         fig.add_trace(go.Pie(
             labels=words,
@@ -1002,7 +1002,7 @@ def create_sitemap_visualization(site_structure):
     
     for depth in sorted(depth_groups.keys()):
         pages_at_depth = depth_groups[depth]
-        color = level_colors[depth % len(level_colors)]
+        color = gray_colors[depth % len(gray_colors)]
         
         # Posicionamento horizontal
         num_pages = len(pages_at_depth)
@@ -1245,58 +1245,6 @@ def onpage_checks(url):
     checks["word_count"] = len(body_text.split())
     
     return checks, internal_links, soup
-
-def generate_summary_with_gemini(onpage_data, psi_data, content_analysis, geo_analysis, issues):
-    """Gera um resumo da análise e próximos passos usando o Gemini."""
-    if not gemini_configured:
-        # Retorna uma mensagem padrão se a API do Gemini não estiver configurada
-        # para não quebrar o aplicativo.
-        return """
-        ### 💡 Resumo da Análise
-        A análise identificou pontos importantes para otimização do seu site.
-
-        ### 🎯 Próximos Passos Recomendados
-        - Revise os problemas técnicos apontados, como `Title` e `H1`.
-        - Foque em melhorar a performance, especialmente em dispositivos móveis.
-        - Enriqueça o conteúdo, garantindo que seja relevante e bem estruturado para usuários e IAs.
-
-        *(Para um resumo mais detalhado e inteligente, configure a chave da API do Gemini.)*
-        """
-
-    try:
-        model = genai.GenerativeModel('gemini-1.0-pro') # Usando a versão recomendada
-
-        # Montando a consulta para o Gemini
-        prompt = f"""
-        Você é um consultor especialista em SEO e GEO (Generative Engine Optimization) de classe mundial.
-        Sua tarefa é analisar os dados de uma auditoria de website e fornecer um resumo executivo e um plano de ação claro e priorizado.
-
-        **DADOS DA AUDITORIA:**
-        - **URL Analisada:** {onpage_data.get('url_principal', 'N/A')}
-        - **Score Geral de SEO:** {onpage_data.get('overall_score', 'N/A')} / 100
-        - **Performance Mobile (PageSpeed):** {psi_data.get('mobile', {}).get('psi_performance', 'N/A')} / 100
-        - **Qualidade do Conteúdo:** {content_analysis.get('content_quality', {}).get('quality_score', 'N/A')} / 100
-        - **Otimização para IA (GEO Score):** {geo_analysis.get('geo_score', 'N/A')} / 100
-        - **Principais Problemas Identificados:** {', '.join(issue.replace('*', '') for issue in issues) if issues else 'Nenhum problema crítico identificado.'}
-
-        **SUA RESPOSTA DEVE SEGUIR ESTRITAMENTE ESTE FORMATO (use markdown):**
-
-        ### 📈 Resumo Executivo
-        Forneça um parágrafo conciso resumindo a saúde geral do site, combinando as métricas de SEO, performance, conteúdo e GEO. Destaque o ponto mais forte e a maior área de oportunidade.
-
-        ### 🎯 Plano de Ação Priorizado
-        Liste os **3 próximos passos mais importantes** que o proprietário do site deve tomar. Use uma lista numerada. Para cada passo, explique brevemente **o porquê** da sua importância e **qual o impacto esperado**. Foque em ações que trarão o maior retorno sobre o esforço.
-
-        **Exemplo de um item do plano de ação:**
-        **1. Otimizar a Performance Mobile:** A pontuação atual de {psi_data.get('mobile', {}).get('psi_performance', 'N/A')} indica que o site pode estar lento para usuários de celular. Melhorar isso é crucial, pois o Google prioriza a experiência móvel, e um site mais rápido aumenta o engajamento e as conversões.
-        """
-
-        response = model.generate_content(prompt)
-        response.resolve() # Garante que a resposta foi totalmente recebida
-        return response.text
-
-    except Exception as e:
-        return f"Ocorreu um erro ao gerar o resumo com o Gemini: {str(e)}"
 
 # ==============================================================================
 # INTERFACE DO STREAMLIT (A "CONSTRUÇÃO" DO APP)
@@ -1977,129 +1925,86 @@ if st.button("🛰️ Iniciar Análise Completa", type="primary"):
                         )
                         st.plotly_chart(fig_content, use_container_width=True)
         
-# --- RECOMENDAÇÕES FINAIS ---
-st.divider()
-st.subheader("💡 Resumo e Próximos Passos")
-
-# Identifica principais problemas
-issues = []
-if onpage_principal.get('title_length', 0) == 0:
-    issues.append("❌ **Title ausente** - Crítico para SEO")
-elif onpage_principal.get('title_length', 0) > 60:
-    issues.append("⚠️ **Title muito longo** - Pode ser cortado nos resultados")
-
-if onpage_principal.get('h1_count', 0) == 0:
-    issues.append("❌ **H1 ausente** - Importante para estrutura")
-elif onpage_principal.get('h1_count', 0) > 1:
-    issues.append("⚠️ **Múltiplos H1** - Use apenas um H1 por página")
-
-if onpage_principal.get('word_count', 0) < 300:
-    issues.append("⚠️ **Conteúdo insuficiente** - Mínimo recomendado: 300 palavras")
-
-if onpage_principal.get('images_sem_alt', 0) > 0:
-    issues.append(f"⚠️ **{onpage_principal.get('images_sem_alt', 0)} imagens sem alt text** - Prejudica acessibilidade")
-
-if broken_links_principal:
-    issues.append(f"❌ **{len(broken_links_principal)} links quebrados** - Prejudica experiência do usuário")
-
-if psi_principal and psi_principal.get('mobile', {}).get('psi_performance', 0) < 60:
-    issues.append("⚠️ **Performance baixa** - Afeta ranking e experiência")
-
-if deep_analysis and structured_data and len(structured_data.get('schemas_found', [])) == 0:
-    issues.append("⚠️ **Dados estruturados ausentes** - Oportunidade perdida para rich snippets")
-
-# Problemas de conteúdo
-if content_analysis:
-    content_score = content_analysis.get('content_quality', {}).get('quality_score', 0)
-    if content_score < 50 and content_score > 0:
-        issues.append("📝 **Qualidade do conteúdo baixa** - Revise estrutura e legibilidade")
-
-    flesch_score = content_analysis.get('readability', {}).get('flesch_score', 0)
-    if isinstance(flesch_score, (int, float)) and flesch_score < 30 and flesch_score > 0:
-        issues.append("📚 **Texto muito complexo** - Simplifique para melhor compreensão")
-
-# Exibe problemas encontrados
-if issues:
-    st.markdown("#### 🚨 Problemas Identificados")
-    for issue in issues[:8]:  # Mostra no máximo 8 problemas principais
-        st.markdown(issue)
-else:
-    st.success("🎉 **Excelente!** Nenhum problema crítico encontrado!")
-
-# Recomendações baseadas no score
-st.markdown("#### 🎯 Prioridades de Otimização")
-
-if overall_score >= 80:
-    st.success("🏆 **Site bem otimizado!** Foque em:")
-    recommendations = [
-        "🔍 Monitoramento contínuo de performance",
-        "📝 Criação de conteúdo de qualidade regular",
-        "📊 Análise de comportamento de usuários",
-        "🎯 Otimização para featured snippets"
-    ]
-elif overall_score >= 60:
-    st.warning("🚀 **Bom potencial!** Otimize:")
-    recommendations = [
-        "📱 Performance mobile (Core Web Vitals)",
-        "🎯 Qualidade e estrutura do conteúdo",
-        "🖼️ Alt text em todas as imagens",
-        "🏗️ Implementação de dados estruturados"
-    ]
-else:
-    st.error("⚠️ **Necessita atenção urgente!** Priorize:")
-    recommendations = [
-        "📝 Title e meta description adequados",
-        "🏷️ Estrutura H1 correta",
-        "📄 Conteúdo mais robusto (mín. 300 palavras)",
-        "🔧 Correção de problemas técnicos básicos",
-        "📚 Melhoria da legibilidade do texto"
-    ]
-
-for rec in recommendations:
-    st.markdown(f"- {rec}")
-
-No lugar do bloco que você deletou, cole este novo código:
-
-Python
-
-# CÓDIGO NOVO (Cole este bloco no lugar do que foi removido)
-
-# --- RECOMENDAÇÕES FINAIS ---
-st.divider()
-
-# Identifica os mesmos problemas de antes para enviar ao Gemini
-issues = []
-if onpage_principal.get('title_length', 0) == 0:
-    issues.append("Title ausente")
-elif onpage_principal.get('title_length', 0) > 60:
-    issues.append("Title muito longo")
-if onpage_principal.get('h1_count', 0) != 1:
-    issues.append(f"{onpage_principal.get('h1_count', 0)} tags H1 (ideal é 1)")
-if onpage_principal.get('word_count', 0) < 300:
-    issues.append("Conteúdo com menos de 300 palavras")
-if onpage_principal.get('images_sem_alt', 0) > 0:
-    issues.append(f"{onpage_principal.get('images_sem_alt', 0)} imagens sem alt text")
-if broken_links_principal:
-    issues.append(f"{len(broken_links_principal)} links quebrados")
-if psi_principal and psi_principal.get('mobile', {}).get('psi_performance', 0) < 50:
-    issues.append("Performance mobile baixa")
-if content_analysis and content_analysis.get('content_quality', {}).get('quality_score', 0) < 50:
-    issues.append("Score de qualidade de conteúdo baixo")
-
-# Gera o resumo com Gemini
-with st.spinner("✨ Gerando resumo e próximos passos com IA..."):
-    # Adicionamos os dados que a função precisa ao dicionário onpage_principal
-    onpage_principal['url_principal'] = url_principal
-    onpage_principal['overall_score'] = overall_score
-
-    summary_gemini = generate_summary_with_gemini(onpage_principal, psi_principal, content_analysis, geo_analysis, issues)
-    st.markdown(summary_gemini)
-
-# Exibe a lista de problemas técnicos para referência rápida
-if issues:
-    with st.expander("🚨 Ver lista de problemas técnicos identificados"):
-        for issue in issues:
-            st.warning(issue)
+        # --- RECOMENDAÇÕES FINAIS ---
+        st.divider()
+        st.subheader("💡 Resumo e Próximos Passos")
+        
+        # Identifica principais problemas
+        issues = []
+        if onpage_principal.get('title_length', 0) == 0:
+            issues.append("❌ **Title ausente** - Crítico para SEO")
+        elif onpage_principal.get('title_length', 0) > 60:
+            issues.append("⚠️ **Title muito longo** - Pode ser cortado nos resultados")
+        
+        if onpage_principal.get('h1_count', 0) == 0:
+            issues.append("❌ **H1 ausente** - Importante para estrutura")
+        elif onpage_principal.get('h1_count', 0) > 1:
+            issues.append("⚠️ **Múltiplos H1** - Use apenas um H1 por página")
+        
+        if onpage_principal.get('word_count', 0) < 300:
+            issues.append("⚠️ **Conteúdo insuficiente** - Mínimo recomendado: 300 palavras")
+        
+        if onpage_principal.get('images_sem_alt', 0) > 0:
+            issues.append(f"⚠️ **{onpage_principal.get('images_sem_alt', 0)} imagens sem alt text** - Prejudica acessibilidade")
+        
+        if broken_links_principal:
+            issues.append(f"❌ **{len(broken_links_principal)} links quebrados** - Prejudica experiência do usuário")
+        
+        if psi_principal and psi_principal.get('mobile', {}).get('psi_performance', 0) < 60:
+            issues.append("⚠️ **Performance baixa** - Afeta ranking e experiência")
+        
+        if deep_analysis and structured_data and len(structured_data.get('schemas_found', [])) == 0:
+            issues.append("⚠️ **Dados estruturados ausentes** - Oportunidade perdida para rich snippets")
+        
+        # Problemas de conteúdo
+        if content_analysis:
+            content_score = content_analysis.get('content_quality', {}).get('quality_score', 0)
+            if content_score < 50 and content_score > 0:
+                issues.append("📝 **Qualidade do conteúdo baixa** - Revise estrutura e legibilidade")
+            
+            flesch_score = content_analysis.get('readability', {}).get('flesch_score', 0)
+            if isinstance(flesch_score, (int, float)) and flesch_score < 30 and flesch_score > 0:
+                issues.append("📚 **Texto muito complexo** - Simplifique para melhor compreensão")
+        
+        # Exibe problemas encontrados
+        if issues:
+            st.markdown("#### 🚨 Problemas Identificados")
+            for issue in issues[:8]:  # Mostra no máximo 8 problemas principais
+                st.markdown(issue)
+        else:
+            st.success("🎉 **Excelente!** Nenhum problema crítico encontrado!")
+        
+        # Recomendações baseadas no score
+        st.markdown("#### 🎯 Prioridades de Otimização")
+        
+        if overall_score >= 80:
+            st.success("🏆 **Site bem otimizado!** Foque em:")
+            recommendations = [
+                "🔍 Monitoramento contínuo de performance",
+                "📝 Criação de conteúdo de qualidade regular",
+                "📊 Análise de comportamento de usuários",
+                "🎯 Otimização para featured snippets"
+            ]
+        elif overall_score >= 60:
+            st.warning("🚀 **Bom potencial!** Otimize:")
+            recommendations = [
+                "📱 Performance mobile (Core Web Vitals)",
+                "🎯 Qualidade e estrutura do conteúdo",
+                "🖼️ Alt text em todas as imagens",
+                "🏗️ Implementação de dados estruturados"
+            ]
+        else:
+            st.error("⚠️ **Necessita atenção urgente!** Priorize:")
+            recommendations = [
+                "📝 Title e meta description adequados",
+                "🏷️ Estrutura H1 correta",
+                "📄 Conteúdo mais robusto (mín. 300 palavras)",
+                "🔧 Correção de problemas técnicos básicos",
+                "📚 Melhoria da legibilidade do texto"
+            ]
+        
+        for rec in recommendations:
+            st.markdown(f"- {rec}")
         
         # Dados técnicos completos (expansível)
         with st.expander("🔧 Ver todos os dados técnicos"):
