@@ -3,4 +3,5 @@ requests
 beautifulsoup4
 google-generativeai
 pandas
-tabulate  
+tabulate
+plotly
