@@ -10,7 +10,8 @@ with st.sidebar:
     analyze_tech_stack = st.checkbox("🔧 Detectar tecnologias", value=True,
                                     help="Identifica CMS, frameworks, analytics, etc.")
     
-    analyze_security = st.checkboximport streamlit as st
+    analyze_security = st.checkbox("🛡️ Análise de segurança", value=True,
+                                  help="Verifica headers de segurança")import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 import google.generativeai as genai
