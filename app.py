@@ -57,7 +57,10 @@ PSI_API_KEY = os.getenv("PSI_API_KEY")
 # DEFINIÇÃO DAS FUNÇÕES DE ANÁLISE
 # (Toda a sua lógica de análise permanece aqui)
 # ==============================================================================
-
+# Cabeçalho para simular um navegador real e evitar bloqueios
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+}
 # ========== NOVA FUNCIONALIDADE: ANÁLISE DE GEO (GENERATIVE ENGINE OPTIMIZATION) ==========
 def analyze_geo_ai_optimization(soup, url):
     """Análise de GEO - Generative Engine Optimization para IAs"""
